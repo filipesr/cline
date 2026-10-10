@@ -21,6 +21,10 @@ export interface TaskCommandInput {
 	start: boolean;
 	/** Interview the person first, then file the card. */
 	brainstorm: boolean;
+	/** Comma-separated when typed; passed on to Kanban as written. */
+	tags?: string;
+	category?: string;
+	priority?: string;
 	description: string;
 }
 
@@ -28,12 +32,20 @@ export interface TaskCommandInput {
  * Flags are read only from the front of the line, so a demand is free to contain "--" in its
  * own text: `/task --start fix the --dry-run flag` starts a card about `--dry-run`.
  */
+const VALUE_FLAGS = new Map<string, "tags" | "category" | "priority">([
+	["--tags", "tags"],
+	["--tag", "tags"],
+	["--category", "category"],
+	["--priority", "priority"],
+]);
+
 export function parseTaskCommand(args: string[]): TaskCommandInput {
 	let start = false;
 	let brainstorm = false;
+	const values: { tags?: string; category?: string; priority?: string } = {};
 	let index = 0;
 	for (; index < args.length; index += 1) {
-		const flag = args[index]?.toLowerCase();
+		const flag = args[index]?.toLowerCase() ?? "";
 		if (flag === "--start" || flag === "--go") {
 			start = true;
 			continue;
@@ -42,9 +54,26 @@ export function parseTaskCommand(args: string[]): TaskCommandInput {
 			brainstorm = true;
 			continue;
 		}
+		const field = VALUE_FLAGS.get(flag);
+		if (field) {
+			// A value flag with nothing after it is a typo, not a request to clear: the rest of
+			// the line is the demand, and eating a word of it would be worse than ignoring the
+			// flag. `--tags` at the very end simply carries no value.
+			const value = args[index + 1];
+			if (value !== undefined && !value.startsWith("--")) {
+				values[field] = value;
+				index += 1;
+			}
+			continue;
+		}
 		break;
 	}
-	return { start, brainstorm, description: args.slice(index).join(" ").trim() };
+	return {
+		start,
+		brainstorm,
+		...values,
+		description: args.slice(index).join(" ").trim(),
+	};
 }
 
 export interface KanbanTaskRequest {
@@ -54,6 +83,9 @@ export interface KanbanTaskRequest {
 	projectPath: string;
 	/** Start the session as soon as the card exists. */
 	start?: boolean;
+	tags?: string;
+	category?: string;
+	priority?: string;
 }
 
 export interface KanbanTaskResult {
@@ -101,6 +133,11 @@ export function buildKanbanCreateArgs(request: KanbanTaskRequest): string[] {
 		request.description,
 		"--project-path",
 		request.projectPath,
+		// Passed through as written: Kanban owns what a valid tag or priority is, and
+		// validating it twice is how the two drift apart.
+		...(request.tags ? ["--tags", request.tags] : []),
+		...(request.category ? ["--category", request.category] : []),
+		...(request.priority ? ["--priority", request.priority] : []),
 	];
 }
 
@@ -234,6 +271,9 @@ export function buildBrainstormPrompt(input: {
 	description: string;
 	projectPath: string;
 	start: boolean;
+	tags?: string;
+	category?: string;
+	priority?: string;
 }): string {
 	return [
 		`A demand came in for the Kanban board of ${input.projectPath}, written as:`,
@@ -253,7 +293,10 @@ export function buildBrainstormPrompt(input: {
 		"",
 		"Do not file the card until the person confirms the demand is right. Then file it with:",
 		"",
-		`  kanban task create --project-path ${input.projectPath} --title <short line> --prompt <the agreed demand>`,
+		`  kanban task create --project-path ${input.projectPath} --title <short line> --prompt <the agreed demand>` +
+			(input.tags ? ` --tags ${input.tags}` : "") +
+			(input.category ? ` --category ${input.category}` : "") +
+			(input.priority ? ` --priority ${input.priority}` : ""),
 		...(input.start
 			? [
 					"",

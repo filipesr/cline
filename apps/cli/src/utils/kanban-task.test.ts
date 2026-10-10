@@ -273,3 +273,87 @@ describe("buildBrainstormPrompt", () => {
 		expect(prompt).toContain("kanban task start");
 	});
 });
+
+describe("parseTaskCommand with value flags", () => {
+	it("reads tags, category and priority from the front of the line", () => {
+		expect(
+			parseTaskCommand([
+				"--tags",
+				"infra,docs",
+				"--category",
+				"bug",
+				"--priority",
+				"high",
+				"consertar",
+				"o",
+				"aceite",
+			]),
+		).toEqual({
+			start: false,
+			brainstorm: false,
+			tags: "infra,docs",
+			category: "bug",
+			priority: "high",
+			description: "consertar o aceite",
+		});
+	});
+
+	it("mixes value flags with the boolean ones in any order", () => {
+		const parsed = parseTaskCommand([
+			"--priority",
+			"low",
+			"--start",
+			"medir",
+			"a",
+			"suite",
+		]);
+		expect(parsed.start).toBe(true);
+		expect(parsed.priority).toBe("low");
+		expect(parsed.description).toBe("medir a suite");
+	});
+
+	it("does not eat the demand when a value flag has no value", () => {
+		// `--tags --start fix it` means the tags flag was a typo; swallowing "--start" as its
+		// value would silently drop a flag the person did mean.
+		const parsed = parseTaskCommand(["--tags", "--start", "fix", "it"]);
+		expect(parsed.tags).toBeUndefined();
+		expect(parsed.start).toBe(true);
+		expect(parsed.description).toBe("fix it");
+	});
+
+	it("leaves a value flag alone once the demand has started", () => {
+		const parsed = parseTaskCommand(["fix", "the", "--priority", "flag"]);
+		expect(parsed.priority).toBeUndefined();
+		expect(parsed.description).toBe("fix the --priority flag");
+	});
+
+	it("carries a trailing flag with nothing after it without crashing", () => {
+		expect(parseTaskCommand(["--tags"]).description).toBe("");
+	});
+});
+
+describe("buildKanbanCreateArgs with attributes", () => {
+	it("passes them through as written, letting Kanban judge them", () => {
+		// Validating a tag or a priority twice is how the two sides drift apart.
+		const args = buildKanbanCreateArgs({
+			description: "work",
+			projectPath: "/code/app",
+			tags: "infra,docs",
+			category: "bug",
+			priority: "high",
+		});
+		expect(args).toContain("--tags");
+		expect(args).toContain("infra,docs");
+		expect(args).toContain("--priority");
+		expect(args).toContain("high");
+	});
+
+	it("leaves the flags out when nothing was given", () => {
+		const args = buildKanbanCreateArgs({
+			description: "work",
+			projectPath: "/code/app",
+		});
+		expect(args).not.toContain("--tags");
+		expect(args).not.toContain("--priority");
+	});
+});

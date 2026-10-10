@@ -288,7 +288,7 @@ function formatHelp(state: ChatCommandState): string {
 		"/tools [on|off|toggle] - allow repo/file/shell tools",
 		"/yolo [on|off|toggle] - auto-approve tool use",
 		"/cwd <path> - change working directory",
-		"/task [--start] [--brainstorm] <what needs doing> - add it to the Kanban backlog",
+		"/task [--start] [--brainstorm] [--tags a,b] [--category x] [--priority p] <what needs doing> - add it to the Kanban backlog",
 		"/schedule create/list/trigger/delete - manage scheduled workflows",
 		"/abort - stop the current task",
 		"/mute [target] - ignore this thread or target until /unmute",
@@ -431,7 +431,8 @@ function createDefaultChatCommandHost(): ChatCommandHost {
 		.register("command", {
 			names: ["/task"],
 			run: async ({ args, state }, context) => {
-				const { start, brainstorm, description } = parseTaskCommand(args);
+				const { start, brainstorm, tags, category, priority, description } =
+					parseTaskCommand(args);
 				if (!description) {
 					await context.reply(
 						[
@@ -439,6 +440,9 @@ function createDefaultChatCommandHost(): ChatCommandHost {
 							"Adds it to the Kanban backlog for this workspace.",
 							"  --start       run it as soon as the card exists",
 							"  --brainstorm  work the demand out with me first, then file it",
+							"  --tags a,b    tags for finding it later",
+							"  --category x  one category, e.g. bug | feature | infra",
+							"  --priority p  high | medium | low",
 						].join("\n"),
 					);
 					return;
@@ -455,7 +459,14 @@ function createDefaultChatCommandHost(): ChatCommandHost {
 						return;
 					}
 					await context.submitPrompt(
-						buildBrainstormPrompt({ description, projectPath, start }),
+						buildBrainstormPrompt({
+							description,
+							projectPath,
+							start,
+							tags,
+							category,
+							priority,
+						}),
 					);
 					return;
 				}
@@ -463,6 +474,9 @@ function createDefaultChatCommandHost(): ChatCommandHost {
 					description,
 					projectPath,
 					start,
+					tags,
+					category,
+					priority,
 				});
 				await context.reply(result.message);
 			},
