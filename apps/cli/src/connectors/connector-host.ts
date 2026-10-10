@@ -402,7 +402,7 @@ export async function handleConnectorUserTurn<
 	if (!resolvedInput) {
 		return;
 	}
-	const runtimeInput = input.runtimeText?.trim() || resolvedInput;
+	let runtimeInput = input.runtimeText?.trim() || resolvedInput;
 
 	const initialState = await loadThreadState(
 		input.thread,
@@ -617,6 +617,11 @@ export async function handleConnectorUserTurn<
 		return;
 	}
 
+	// A command may hand the turn a prompt of its own instead of answering and stopping:
+	// `/task --brainstorm` wants the agent to interview the person before filing the card. The
+	// interactive runtime has always supported this; connectors declared the capability in the
+	// context type and never provided it, so such a command had nowhere to go.
+	let submittedPrompt: string | undefined;
 	if (
 		await maybeHandleChatCommand(resolvedInput, {
 			enabled: true,
@@ -706,6 +711,12 @@ export async function handleConnectorUserTurn<
 			},
 			reply: async (message) => {
 				await postConnectorText(input.thread, input.transport, message);
+			},
+			submitPrompt: (prompt) => {
+				const trimmed = prompt.trim();
+				if (trimmed) {
+					submittedPrompt = trimmed;
+				}
 			},
 			reset: async () => {
 				await clearSession({
@@ -1001,7 +1012,10 @@ export async function handleConnectorUserTurn<
 			},
 		})
 	) {
-		return;
+		if (submittedPrompt === undefined) {
+			return;
+		}
+		runtimeInput = submittedPrompt;
 	}
 
 	const currentState = await loadThreadState(

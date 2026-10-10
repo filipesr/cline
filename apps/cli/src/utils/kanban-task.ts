@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { basename } from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -15,11 +16,44 @@ const execFileAsync = promisify(execFile);
 
 const TITLE_MAX_LENGTH = 60;
 
+export interface TaskCommandInput {
+	/** Create the card and start its session right away. */
+	start: boolean;
+	/** Interview the person first, then file the card. */
+	brainstorm: boolean;
+	description: string;
+}
+
+/**
+ * Flags are read only from the front of the line, so a demand is free to contain "--" in its
+ * own text: `/task --start fix the --dry-run flag` starts a card about `--dry-run`.
+ */
+export function parseTaskCommand(args: string[]): TaskCommandInput {
+	let start = false;
+	let brainstorm = false;
+	let index = 0;
+	for (; index < args.length; index += 1) {
+		const flag = args[index]?.toLowerCase();
+		if (flag === "--start" || flag === "--go") {
+			start = true;
+			continue;
+		}
+		if (flag === "--brainstorm" || flag === "--ask") {
+			brainstorm = true;
+			continue;
+		}
+		break;
+	}
+	return { start, brainstorm, description: args.slice(index).join(" ").trim() };
+}
+
 export interface KanbanTaskRequest {
 	/** The demand as the person wrote it. Becomes the card's prompt verbatim. */
 	description: string;
 	/** Repository the card belongs to -- the conversation's workspace, not a worktree. */
 	projectPath: string;
+	/** Start the session as soon as the card exists. */
+	start?: boolean;
 }
 
 export interface KanbanTaskResult {
@@ -152,9 +186,71 @@ export async function createKanbanTask(
 	if (!taskId) {
 		return { ok: false, message: "Kanban did not report a task id." };
 	}
+	const workspace = basename(request.projectPath) || request.projectPath;
+	if (!request.start) {
+		return {
+			ok: true,
+			taskId,
+			message: `Added to the ${workspace} backlog: ${deriveTaskTitle(description)} (card ${taskId})`,
+		};
+	}
+
+	try {
+		await run([
+			"task",
+			"start",
+			"--task-id",
+			taskId,
+			"--project-path",
+			request.projectPath,
+		]);
+	} catch (error) {
+		// The card exists, so say so: "could not start" without "but it is filed" would read as
+		// if the demand had been lost.
+		return {
+			ok: false,
+			taskId,
+			message: `Filed in ${workspace} as card ${taskId}, but could not start it: ${describeFailure(error)}`,
+		};
+	}
 	return {
 		ok: true,
 		taskId,
-		message: `Added to backlog as ${taskId}: ${deriveTaskTitle(description)}`,
+		message: `Started in ${workspace}: ${deriveTaskTitle(description)} (card ${taskId})`,
 	};
+}
+
+/**
+ * The brainstorm is the agent's job, not the connector's: the conversation already has a model
+ * in it, and interviewing someone about a half-formed demand is exactly what it is good at.
+ * The connector only hands it the assignment and gets out of the way.
+ */
+export function buildBrainstormPrompt(input: {
+	description: string;
+	projectPath: string;
+	start: boolean;
+}): string {
+	return [
+		`A demand came in for the Kanban board of ${input.projectPath}, written as:`,
+		"",
+		input.description,
+		"",
+		"Do not file it yet. First interview the person in this conversation until the demand is",
+		"clear enough for another agent to pick up cold: what outcome it must produce, how anyone",
+		"would know it worked, and what is deliberately out of scope. Ask one question at a time,",
+		"and ask only what you cannot answer yourself by reading the repository.",
+		"",
+		"When the person confirms it is right, file it by running:",
+		"",
+		`  kanban task create --project-path ${input.projectPath} --title <short line> --prompt <the agreed demand>`,
+		...(input.start
+			? [
+					"",
+					"Then start it with `kanban task start --task-id <id from the create output> " +
+						`--project-path ${input.projectPath}\`.`,
+				]
+			: []),
+		"",
+		"Finally, tell the person the card id. If they decide against it, say so and file nothing.",
+	].join("\n");
 }

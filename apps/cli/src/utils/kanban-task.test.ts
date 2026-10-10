@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+	buildBrainstormPrompt,
 	buildKanbanCreateArgs,
 	createKanbanTask,
 	deriveTaskTitle,
+	parseTaskCommand,
 	readCreatedTaskId,
 } from "./kanban-task";
 
@@ -139,5 +141,132 @@ describe("createKanbanTask", () => {
 		);
 		expect(result.ok).toBe(false);
 		expect(result.message).toContain("did not report a task id");
+	});
+});
+
+describe("parseTaskCommand", () => {
+	it("reads the flags that lead the line", () => {
+		expect(
+			parseTaskCommand(["--start", "--brainstorm", "fazer", "algo"]),
+		).toEqual({
+			start: true,
+			brainstorm: true,
+			description: "fazer algo",
+		});
+	});
+
+	it("leaves a flag alone once the demand has started", () => {
+		// A demand is free to be about a flag. Reading flags anywhere would eat the subject.
+		expect(
+			parseTaskCommand(["--start", "fix", "the", "--dry-run", "flag"]),
+		).toEqual({
+			start: true,
+			brainstorm: false,
+			description: "fix the --dry-run flag",
+		});
+	});
+
+	it("defaults to filing without starting", () => {
+		expect(parseTaskCommand(["medir", "a", "suite"])).toEqual({
+			start: false,
+			brainstorm: false,
+			description: "medir a suite",
+		});
+	});
+
+	it("reports an empty demand so the caller can show usage", () => {
+		expect(parseTaskCommand([]).description).toBe("");
+		expect(parseTaskCommand(["--start"]).description).toBe("");
+	});
+});
+
+describe("createKanbanTask with --start", () => {
+	it("starts the session after the card exists", async () => {
+		const calls: string[][] = [];
+		const result = await createKanbanTask(
+			{
+				description: "medir a suite",
+				projectPath: "/code/partyshare",
+				start: true,
+			},
+			{
+				run: async (args) => {
+					calls.push(args);
+					return { stdout: OK };
+				},
+			},
+		);
+		expect(result.ok).toBe(true);
+		expect(calls[1]).toEqual([
+			"task",
+			"start",
+			"--task-id",
+			"65f2d",
+			"--project-path",
+			"/code/partyshare",
+		]);
+		expect(result.message).toContain("Started in partyshare");
+	});
+
+	it("says the card is filed even when starting it fails", async () => {
+		// Reporting only the failure would read as if the demand had been lost.
+		let call = 0;
+		const result = await createKanbanTask(
+			{
+				description: "medir a suite",
+				projectPath: "/code/partyshare",
+				start: true,
+			},
+			{
+				run: async () => {
+					call += 1;
+					if (call === 1) {
+						return { stdout: OK };
+					}
+					throw Object.assign(new Error("boom"), { stderr: "boom" });
+				},
+			},
+		);
+		expect(result.ok).toBe(false);
+		expect(result.taskId).toBe("65f2d");
+		expect(result.message).toContain("card 65f2d");
+		expect(result.message).toContain("could not start");
+	});
+
+	it("names the workspace and labels the id, so the reply is not a bare number", () => {
+		// "Added to backlog as 12854" read as a formatting bug to the person who got it.
+		return createKanbanTask(
+			{ description: "confirmar o diretorio", projectPath: "/code/kanban" },
+			{ run: async () => ({ stdout: OK }) },
+		).then((result) => {
+			expect(result.message).toBe(
+				"Added to the kanban backlog: confirmar o diretorio (card 65f2d)",
+			);
+		});
+	});
+});
+
+describe("buildBrainstormPrompt", () => {
+	it("tells the agent to interview first and file afterwards", () => {
+		const prompt = buildBrainstormPrompt({
+			description: "melhorar o aceite",
+			projectPath: "/code/partyshare",
+			start: false,
+		});
+		expect(prompt).toContain("Do not file it yet");
+		expect(prompt).toContain("melhorar o aceite");
+		expect(prompt).toContain(
+			"kanban task create --project-path /code/partyshare",
+		);
+		expect(prompt).not.toContain("kanban task start");
+	});
+
+	it("adds the start step only when asked for", () => {
+		const prompt = buildBrainstormPrompt({
+			description: "melhorar o aceite",
+			projectPath: "/code/partyshare",
+			start: true,
+		});
+		expect(prompt).toContain("kanban task start");
 	});
 });
