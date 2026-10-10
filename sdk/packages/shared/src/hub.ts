@@ -989,12 +989,32 @@ export type HubTransportFrame =
 	| { kind: "stream.unsubscribe"; clientId: string; sessionId?: string }
 	| { kind: "event"; envelope: HubEventEnvelope };
 
+/**
+ * Where a notification came from, so a subscriber can route it instead of guessing.
+ *
+ * Without this, every consumer of `ui.notify` has the same problem: it knows a thing
+ * happened but not where, so it can only broadcast to everything or deliver to whatever
+ * conversation was most recently active. Both are wrong once more than one workspace is in
+ * play, and both fail silently -- the notification goes somewhere, just not where it belongs.
+ *
+ * Optional on purpose: existing publishers keep working unchanged, and a subscriber that does
+ * not care can ignore it.
+ */
+export interface HubUINotifySource {
+	/** Absolute path of the workspace the notification is about, when it is about one. */
+	workspacePath?: string;
+	/** Opaque id of the thing inside that workspace (a task, a card, a run). */
+	itemId?: string;
+}
+
 export interface HubUINotifyPayload {
 	title: string;
 	body: string;
 	severity?: "info" | "warning" | "error";
 	sessionId?: string;
 	clientId?: string;
+	/** Origin of the notification, for subscribers that route by workspace. */
+	source?: HubUINotifySource;
 }
 
 export interface HubUIShowWindowPayload {
