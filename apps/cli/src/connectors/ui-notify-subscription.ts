@@ -44,8 +44,19 @@ export interface StartUiNotifyDeliveryInput<
 	displayName?: string;
 	/** Read fresh on each event: bindings change while the connector runs. */
 	readBindings: () => Record<string, { state?: TState }>;
-	deliver: (threadKey: string, text: string) => Promise<void>;
+	deliver: (
+		threadKey: string,
+		text: string,
+		options: NotifyDeliveryOptions,
+	) => Promise<void>;
 	onError?: (error: unknown) => void;
+}
+
+export interface NotifyDeliveryOptions {
+	/** The thing the notification is about, when it names one. The key for superseding. */
+	itemId?: string;
+	/** Update the previous notification about `itemId` rather than adding another. */
+	supersedesPrevious: boolean;
 }
 
 export interface UiNotifySubscription {
@@ -56,7 +67,9 @@ export interface UiNotifySubscription {
 
 function readNotification(
 	payload: unknown,
-): { text: string; source?: UiNotifySource } | undefined {
+):
+	| { text: string; source?: UiNotifySource; supersedesPrevious: boolean }
+	| undefined {
 	if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
 		return undefined;
 	}
@@ -71,7 +84,11 @@ function readNotification(
 		rawSource && typeof rawSource === "object" && !Array.isArray(rawSource)
 			? (rawSource as UiNotifySource)
 			: undefined;
-	return { text: [title, body].filter(Boolean).join("\n\n"), source };
+	return {
+		text: [title, body].filter(Boolean).join("\n\n"),
+		source,
+		supersedesPrevious: record.supersedesPrevious === true,
+	};
 }
 
 export async function startUiNotifyDelivery<
@@ -111,9 +128,14 @@ export async function startUiNotifyDelivery<
 				);
 				for (const threadKey of targets) {
 					track(
-						input.deliver(threadKey, notification.text).catch((error) => {
-							input.onError?.(error);
-						}),
+						input
+							.deliver(threadKey, notification.text, {
+								itemId: notification.source?.itemId,
+								supersedesPrevious: notification.supersedesPrevious,
+							})
+							.catch((error) => {
+								input.onError?.(error);
+							}),
 					);
 				}
 			} catch (error) {

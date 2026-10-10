@@ -1015,6 +1015,17 @@ export interface HubUINotifyPayload {
 	clientId?: string;
 	/** Origin of the notification, for subscribers that route by workspace. */
 	source?: HubUINotifySource;
+	/**
+	 * Whether this notification supersedes the previous one about the same `source.itemId`
+	 * instead of adding to it. A long-running task that reports what it is doing produces a
+	 * stream of these, and a subscriber that shows each one separately turns a working agent
+	 * into a flood; one that updates a single notification turns it into a status line.
+	 *
+	 * Subscribers that cannot update an already-delivered notification may ignore this and
+	 * show every one, or show none but the ones without it. A notification that asks the
+	 * person for something must not set it: that one has to arrive on its own.
+	 */
+	supersedesPrevious?: boolean;
 }
 
 export interface HubUIShowWindowPayload {

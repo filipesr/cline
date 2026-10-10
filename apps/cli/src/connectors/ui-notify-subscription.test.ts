@@ -142,3 +142,55 @@ describe("UiNotifyClient", () => {
 		expect(fake.unsubscribed).toBe(1);
 	});
 });
+
+describe("what the subscription hands the adapter", () => {
+	it("passes the item and the supersede intent through", async () => {
+		const fake = fakeClient();
+		const calls: Array<[string, string, unknown]> = [];
+		const subscription = await startUiNotifyDelivery({
+			createClient: () => fake.client,
+			readBindings: () => ({ t1: { state: { cwd: "/code/app" } } }),
+			deliver: async (threadKey, text, options) => {
+				calls.push([threadKey, text, options]);
+			},
+		});
+
+		fake.emit({
+			title: "Running",
+			body: "Executing Bash",
+			source: { workspacePath: "/code/app", itemId: "461e5" },
+			supersedesPrevious: true,
+		});
+		await subscription.flush();
+
+		expect(calls[0]?.[2]).toEqual({
+			itemId: "461e5",
+			supersedesPrevious: true,
+		});
+		await subscription.stop();
+	});
+
+	it("treats a notification without the field as one that stands on its own", async () => {
+		// Anything that asks the person for something must arrive as its own message, and a
+		// payload that says nothing about superseding is asking for exactly that.
+		const fake = fakeClient();
+		const calls: unknown[] = [];
+		const subscription = await startUiNotifyDelivery({
+			createClient: () => fake.client,
+			readBindings: () => ({ t1: { state: { cwd: "/code/app" } } }),
+			deliver: async (_threadKey, _text, options) => {
+				calls.push(options);
+			},
+		});
+
+		fake.emit({
+			title: "Ready for review",
+			body: "card — app",
+			source: { workspacePath: "/code/app", itemId: "461e5" },
+		});
+		await subscription.flush();
+
+		expect(calls[0]).toEqual({ itemId: "461e5", supersedesPrevious: false });
+		await subscription.stop();
+	});
+});

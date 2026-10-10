@@ -1,4 +1,7 @@
-import type { ConnectorBindingStore, ConnectorThreadState } from "./thread-bindings";
+import type {
+	ConnectorBindingStore,
+	ConnectorThreadState,
+} from "./thread-bindings";
 
 /**
  * Routing for hub `ui.notify` events, by the workspace the notification came from.
@@ -31,7 +34,9 @@ function normalizePath(value: string | undefined): string {
 	}
 	// A trailing separator names the same directory, and a binding written by hand often has
 	// one. Comparing raw strings would make those two miss each other.
-	return trimmed.length > 1 && trimmed.endsWith("/") ? trimmed.slice(0, -1) : trimmed;
+	return trimmed.length > 1 && trimmed.endsWith("/")
+		? trimmed.slice(0, -1)
+		: trimmed;
 }
 
 /**
@@ -53,15 +58,40 @@ export function resolveNotifyTargets<TState extends ConnectorThreadState>(
 
 	const targets: string[] = [];
 	for (const [key, binding] of Object.entries(bindings)) {
-		const state = (binding as { state?: ConnectorThreadState } | undefined)?.state;
+		const state = (binding as { state?: ConnectorThreadState } | undefined)
+			?.state;
 		if (!state) {
 			continue;
 		}
 		// `workspaceRoot` is the repository; `cwd` may be a package inside it. A notification
 		// about the repository belongs in a thread working anywhere within it.
-		if (normalizePath(state.workspaceRoot) === wanted || normalizePath(state.cwd) === wanted) {
+		if (
+			normalizePath(state.workspaceRoot) === wanted ||
+			normalizePath(state.cwd) === wanted
+		) {
 			targets.push(key);
 		}
 	}
 	return targets;
+}
+
+/**
+ * Key under which a connector remembers the message it posted about one thing, so a later
+ * notification about the same thing can update it instead of adding another.
+ *
+ * Returns nothing when the notification names no item: there is then nothing to supersede, and
+ * guessing -- updating whatever was posted last in that conversation -- would overwrite an
+ * unrelated message.
+ */
+export function resolveNotifyMessageKey(
+	threadKey: string,
+	itemId: string | undefined,
+): string | undefined {
+	const trimmed = itemId?.trim();
+	if (!trimmed || !threadKey) {
+		return undefined;
+	}
+	// A JSON pair cannot be forged by an id that merely looks like a joined key, which a
+	// hand-picked separator character would allow.
+	return JSON.stringify([threadKey, trimmed]);
 }

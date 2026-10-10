@@ -8,7 +8,7 @@ import type {
 	ConnectTelegramOptions,
 	TelegramConnectorState,
 } from "@cline/shared";
-import { Chat, ConsoleLogger, type Thread } from "chat";
+import { Chat, ConsoleLogger, type SentMessage, type Thread } from "chat";
 import type { Command } from "commander";
 import type { CliLoggerAdapter } from "../../logging/adapter";
 import { createCliLoggerAdapter } from "../../logging/adapter";
@@ -55,6 +55,7 @@ import type {
 	ConnectRunContext,
 	ConnectStopResult,
 } from "../types";
+import { resolveNotifyMessageKey } from "../ui-notify-delivery";
 import { startUiNotifyDelivery } from "../ui-notify-subscription";
 import {
 	getConnectorFirstContactMessage,
@@ -869,6 +870,9 @@ class TelegramConnector extends ConnectorBase<
 		let notifySubscription:
 			| Awaited<ReturnType<typeof startUiNotifyDelivery>>
 			| undefined;
+		// Lives only as long as the connector: after a restart the first update posts a new
+		// message, which is the honest outcome -- the old one is no longer ours to touch.
+		const notifyMessages = new Map<string, SentMessage>();
 		try {
 			notifySubscription = await startUiNotifyDelivery<TelegramThreadState>({
 				address: rpcAddress,
@@ -876,7 +880,7 @@ class TelegramConnector extends ConnectorBase<
 				displayName: `telegram notifications (${options.botUsername})`,
 				// Read fresh per event: bindings change while the connector runs.
 				readBindings: () => readBindings<TelegramThreadState>(bindingsPath),
-				deliver: async (threadKey, text) => {
+				deliver: async (threadKey, text, options) => {
 					const bindings = readBindings<TelegramThreadState>(bindingsPath);
 					const serialized = bindings[threadKey]?.serializedThread;
 					if (!serialized) {
@@ -896,7 +900,36 @@ class TelegramConnector extends ConnectorBase<
 						serialized,
 						bot.reviver(),
 					) as Thread<TelegramThreadState>;
-					await thread.post({ raw: text });
+					// A task reporting what it is doing sends one of these every few seconds.
+					// Updating the message it already has keeps a working agent from becoming a
+					// flood; a notification that asks for something never supersedes, so it
+					// still arrives on its own.
+					const messageKey = resolveNotifyMessageKey(threadKey, options.itemId);
+					const previous = messageKey
+						? notifyMessages.get(messageKey)
+						: undefined;
+					if (options.supersedesPrevious && previous) {
+						try {
+							notifyMessages.set(
+								messageKey as string,
+								await previous.edit({ raw: text }),
+							);
+							loggerAdapter.core.log("Telegram notification updated", {
+								transport: "telegram",
+								threadKey,
+							});
+							return;
+						} catch {
+							// Telegram refuses an edit whose text is unchanged, and refuses one
+							// on a message too old to touch. Falling through to a new message is
+							// better than losing the update.
+							notifyMessages.delete(messageKey as string);
+						}
+					}
+					const sent = await thread.post({ raw: text });
+					if (messageKey) {
+						notifyMessages.set(messageKey, sent);
+					}
 					loggerAdapter.core.log("Telegram notification delivered", {
 						transport: "telegram",
 						threadKey,
