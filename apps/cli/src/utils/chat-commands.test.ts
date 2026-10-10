@@ -458,7 +458,7 @@ describe("/task", () => {
 		expect(handled).toBe(true);
 		expect(createKanbanTask).not.toHaveBeenCalled();
 		expect(submitPrompt).toHaveBeenCalledWith(
-			expect.stringContaining("Do not file it yet"),
+			expect.stringContaining("Interview the person about it"),
 		);
 		expect(submitPrompt).toHaveBeenCalledWith(
 			expect.stringContaining("melhorar o aceite"),

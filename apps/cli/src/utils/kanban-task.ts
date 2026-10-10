@@ -224,6 +224,11 @@ export async function createKanbanTask(
  * The brainstorm is the agent's job, not the connector's: the conversation already has a model
  * in it, and interviewing someone about a half-formed demand is exactly what it is good at.
  * The connector only hands it the assignment and gets out of the way.
+ *
+ * The instruction is blunt about asking first and exploring later, because the first version was
+ * not: it said to ask only what could not be answered by reading the repository, and the agent
+ * dutifully went off to read the repository -- dispatching a sub-agent and falling silent while
+ * the person sat in a chat window waiting for a question that never came.
  */
 export function buildBrainstormPrompt(input: {
 	description: string;
@@ -235,12 +240,18 @@ export function buildBrainstormPrompt(input: {
 		"",
 		input.description,
 		"",
-		"Do not file it yet. First interview the person in this conversation until the demand is",
-		"clear enough for another agent to pick up cold: what outcome it must produce, how anyone",
-		"would know it worked, and what is deliberately out of scope. Ask one question at a time,",
-		"and ask only what you cannot answer yourself by reading the repository.",
+		"Interview the person about it, right here in this conversation, until the demand is clear",
+		"enough for another agent to pick it up cold: what outcome it must produce, how anyone",
+		"would know it worked, and what is deliberately out of scope.",
 		"",
-		"When the person confirms it is right, file it by running:",
+		"Rules for the interview, because this is a chat and someone is waiting in it:",
+		"- Ask your first question in this very reply. Do not explore the repository first.",
+		"- One question at a time, and keep each message short enough to read on a phone.",
+		"- Do not dispatch sub-agents and do not go quiet. If you need to check something in the",
+		"  code, say what you are checking, check it, and come back with the answer and the next",
+		"  question in the same reply.",
+		"",
+		"Do not file the card until the person confirms the demand is right. Then file it with:",
 		"",
 		`  kanban task create --project-path ${input.projectPath} --title <short line> --prompt <the agreed demand>`,
 		...(input.start

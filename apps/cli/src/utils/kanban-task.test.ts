@@ -253,8 +253,11 @@ describe("buildBrainstormPrompt", () => {
 			projectPath: "/code/partyshare",
 			start: false,
 		});
-		expect(prompt).toContain("Do not file it yet");
+		expect(prompt).toContain("Do not file the card until the person confirms");
 		expect(prompt).toContain("melhorar o aceite");
+		// The first version let the agent go exploring and fall silent while the person waited.
+		expect(prompt).toContain("Ask your first question in this very reply");
+		expect(prompt).toContain("Do not dispatch sub-agents");
 		expect(prompt).toContain(
 			"kanban task create --project-path /code/partyshare",
 		);
