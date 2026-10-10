@@ -55,6 +55,7 @@ import type {
 	ConnectRunContext,
 	ConnectStopResult,
 } from "../types";
+import { startUiNotifyDelivery } from "../ui-notify-subscription";
 import {
 	getConnectorFirstContactMessage,
 	getConnectorSystemPrompt,
@@ -860,6 +861,49 @@ class TelegramConnector extends ConnectorBase<
 			loggerAdapter,
 		);
 
+		// The hub has broadcast `ui.notify` for a while with only the menubar app listening.
+		// Subscribing here is what makes a background completion -- a `--zen` run, a Kanban
+		// card entering review -- reach the conversation it belongs to. Best-effort: a hub we
+		// cannot reach is a normal condition and must never stop the connector from serving
+		// chat, which is its actual job.
+		let notifySubscription:
+			| Awaited<ReturnType<typeof startUiNotifyDelivery>>
+			| undefined;
+		try {
+			notifySubscription = await startUiNotifyDelivery<TelegramThreadState>({
+				address: rpcAddress,
+				authToken: rpcAuthToken,
+				displayName: `telegram notifications (${options.botUsername})`,
+				// Read fresh per event: bindings change while the connector runs.
+				readBindings: () => readBindings<TelegramThreadState>(bindingsPath),
+				deliver: async (threadKey, text) => {
+					const bindings = readBindings<TelegramThreadState>(bindingsPath);
+					const serialized = bindings[threadKey]?.serializedThread;
+					if (!serialized) {
+						return;
+					}
+					const thread = JSON.parse(
+						serialized,
+						bot.reviver(),
+					) as Thread<TelegramThreadState>;
+					await thread.post({ raw: text });
+				},
+				onError: (error) => {
+					loggerAdapter.core.log("Telegram notification delivery failed", {
+						severity: "warn",
+						transport: "telegram",
+						error: String(error),
+					});
+				},
+			});
+		} catch (error) {
+			loggerAdapter.core.log("Telegram notification subscription unavailable", {
+				severity: "warn",
+				transport: "telegram",
+				error: String(error),
+			});
+		}
+
 		let stopping = false;
 		let resolveStop: (() => void) | undefined;
 		const stopPromise = new Promise<void>((resolve) => {
@@ -1213,6 +1257,7 @@ class TelegramConnector extends ConnectorBase<
 		);
 		await telegram.stopPolling().catch(() => undefined);
 		await bot.shutdown().catch(() => undefined);
+		await notifySubscription?.stop().catch(() => undefined);
 		client.close();
 		this.removeStateFile(statePath);
 		loggerAdapter.core.log("Telegram connector stopped", {
