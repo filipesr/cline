@@ -1,4 +1,4 @@
-import { HubUIClient } from "@cline/core";
+import type { HubUIClient } from "@cline/core";
 import type { HubUINotifyPayload } from "@cline/shared";
 import { describe, expect, it, vi } from "vitest";
 

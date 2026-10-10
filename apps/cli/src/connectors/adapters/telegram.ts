@@ -882,11 +882,14 @@ class TelegramConnector extends ConnectorBase<
 					if (!serialized) {
 						// The workspace matched but the conversation has no thread to post into.
 						// Worth a line: silence here is indistinguishable from "nothing matched".
-						loggerAdapter.core.log("Telegram notification has no thread to post to", {
-							severity: "warn",
-							transport: "telegram",
-							threadKey,
-						});
+						loggerAdapter.core.log(
+							"Telegram notification has no thread to post to",
+							{
+								severity: "warn",
+								transport: "telegram",
+								threadKey,
+							},
+						);
 						return;
 					}
 					const thread = JSON.parse(
