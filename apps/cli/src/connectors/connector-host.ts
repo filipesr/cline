@@ -484,9 +484,15 @@ export async function handleConnectorUserTurn<
 		input.botUserName,
 	);
 	const isConnectorCommand = commandName !== undefined;
+	// Telegram's "address me explicitly in groups" etiquette exists so several bots in one room
+	// do not all answer the same /start. A connector with an authorization hook already decides
+	// for itself who may talk to it, so the etiquette buys nothing and costs everything: an
+	// unaddressed command in a group vanished with no reply at all, while plain text in the very
+	// same thread was answered normally.
 	if (
 		isConnectorCommand &&
 		!input.thread.isDM &&
+		!input.hookCommand &&
 		!isConnectorCommandAddressedToThisBot(resolvedInput, input.botUserName)
 	) {
 		input.logger.core.log("Unaddressed connector chat command ignored", {
@@ -615,7 +621,7 @@ export async function handleConnectorUserTurn<
 		await maybeHandleChatCommand(resolvedInput, {
 			enabled: true,
 			botUserName: input.botUserName,
-			requireBotMention: !input.thread.isDM,
+			requireBotMention: !input.thread.isDM && !input.hookCommand,
 			host: input.chatCommandHost,
 			getState: async () => {
 				const current = await loadThreadState(

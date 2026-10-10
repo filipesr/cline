@@ -224,6 +224,96 @@ describe("handleConnectorUserTurn", () => {
 		);
 	});
 
+	it("answers an unaddressed command in a group when an authorization hook gates access", async () => {
+		// Telegram's "address me explicitly in groups" etiquette keeps several bots in one room
+		// from all answering the same /start. A connector with an authorization hook already
+		// decides who may talk to it, so the etiquette only cost: an unaddressed /cwd in a
+		// topic vanished with no reply at all, while plain text in that same thread was
+		// answered normally. Eleven commands were lost that way before anyone noticed.
+		const dir = mkdtempSync(join(tmpdir(), "connector-host-test-"));
+		tempDirs.push(dir);
+		const bindingsPath = join(dir, "threads.json");
+		const { thread, posts } = createThread(
+			{
+				enableTools: false,
+				autoApproveTools: false,
+				cwd: "/tmp/work",
+				workspaceRoot: "/tmp/work",
+				participantKey: "telegram:946217355",
+				participantLabel: "filipe",
+			},
+			false,
+		);
+
+		await handleConnectorUserTurn({
+			thread: thread as never,
+			client: {} as never,
+			pendingApprovals: new Map(),
+			baseStartRequest: baseStartRequest() as never,
+			explicitSystemPrompt: undefined,
+			clientId: "client-1",
+			logger: {
+				core: { debug: vi.fn(), log: vi.fn(), error: vi.fn() },
+			} as never,
+			transport: "telegram",
+			botUserName: "fsrezende_cline_bot",
+			requestStop: vi.fn(),
+			bindingsPath,
+			systemRules: "rules",
+			errorLabel: "Telegram",
+			getSessionMetadata: () => ({}),
+			reusedLogMessage: "reused",
+			hookCommand: "true",
+			text: "/whereami",
+		});
+
+		expect(messageText(posts.at(-1))).toContain(
+			"participantKey=telegram:946217355",
+		);
+	});
+
+	it("still ignores an unaddressed command in a group with no gate on access", async () => {
+		// Without a hook the connector cannot tell who is entitled to it, so a bare /start in a
+		// shared room is not ours to answer.
+		const dir = mkdtempSync(join(tmpdir(), "connector-host-test-"));
+		tempDirs.push(dir);
+		const bindingsPath = join(dir, "threads.json");
+		const { thread, posts } = createThread(
+			{
+				enableTools: false,
+				autoApproveTools: false,
+				cwd: "/tmp/work",
+				workspaceRoot: "/tmp/work",
+				participantKey: "telegram:946217355",
+				participantLabel: "filipe",
+			},
+			false,
+		);
+
+		await handleConnectorUserTurn({
+			thread: thread as never,
+			client: {} as never,
+			pendingApprovals: new Map(),
+			baseStartRequest: baseStartRequest() as never,
+			explicitSystemPrompt: undefined,
+			clientId: "client-1",
+			logger: {
+				core: { debug: vi.fn(), log: vi.fn(), error: vi.fn() },
+			} as never,
+			transport: "telegram",
+			botUserName: "fsrezende_cline_bot",
+			requestStop: vi.fn(),
+			bindingsPath,
+			systemRules: "rules",
+			errorLabel: "Telegram",
+			getSessionMetadata: () => ({}),
+			reusedLogMessage: "reused",
+			text: "/whereami",
+		});
+
+		expect(posts).toEqual([]);
+	});
+
 	it("sends a first-contact message only once per persisted thread state", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "connector-host-test-"));
 		tempDirs.push(dir);
