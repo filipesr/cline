@@ -5,6 +5,15 @@ import {
 	maybeHandleChatCommand,
 	normalizeCommandName,
 } from "./chat-commands";
+import { createKanbanTask } from "./kanban-task";
+
+vi.mock("./kanban-task", () => ({
+	createKanbanTask: vi.fn(async () => ({
+		ok: true,
+		taskId: "65f2d",
+		message: "Added to backlog as 65f2d: Congelar a margem",
+	})),
+}));
 
 describe("chat commands", () => {
 	it("shows connector help for /help and /start", async () => {
@@ -358,5 +367,70 @@ describe("chat commands", () => {
 		expect(handled).toBe(true);
 		expect(abort).toHaveBeenCalledTimes(1);
 		expect(reply).not.toHaveBeenCalled();
+	});
+});
+
+describe("/task", () => {
+	function context(
+		reply: (text: string) => Promise<void>,
+		cwd: string,
+		workspaceRoot: string,
+	) {
+		return {
+			enabled: true,
+			getState: async () => ({
+				enableTools: true,
+				autoApproveTools: false,
+				cwd,
+				workspaceRoot,
+			}),
+			setState: async () => undefined,
+			reply,
+		};
+	}
+
+	it("creates the card against the conversation's repository, not its worktree", async () => {
+		const reply = vi.fn<(text: string) => Promise<void>>(async () => undefined);
+		const handled = await maybeHandleChatCommand(
+			"/task Congelar a margem no aceite",
+			context(
+				reply,
+				"/home/me/.cline/worktrees/461e5/partyshare",
+				"/code/partyshare",
+			),
+		);
+
+		expect(handled).toBe(true);
+		expect(createKanbanTask).toHaveBeenCalledWith({
+			description: "Congelar a margem no aceite",
+			projectPath: "/code/partyshare",
+		});
+		expect(reply).toHaveBeenCalledWith(
+			"Added to backlog as 65f2d: Congelar a margem",
+		);
+	});
+
+	it("shows usage instead of creating an empty card", async () => {
+		const reply = vi.fn<(text: string) => Promise<void>>(async () => undefined);
+		vi.mocked(createKanbanTask).mockClear();
+		const handled = await maybeHandleChatCommand(
+			"/task",
+			context(reply, "/code/app", "/code/app"),
+		);
+
+		expect(handled).toBe(true);
+		expect(createKanbanTask).not.toHaveBeenCalled();
+		expect(reply).toHaveBeenCalledWith(expect.stringContaining("Usage: /task"));
+	});
+
+	it("is listed in the help, or nobody would find it", async () => {
+		const reply = vi.fn<(text: string) => Promise<void>>(async () => undefined);
+		await maybeHandleChatCommand(
+			"/help",
+			context(reply, "/code/app", "/code/app"),
+		);
+		expect(reply).toHaveBeenCalledWith(
+			expect.stringContaining("/task <what needs doing>"),
+		);
 	});
 });

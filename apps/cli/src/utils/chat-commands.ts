@@ -1,6 +1,7 @@
 import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { resolveWorkspaceRoot } from "./helpers";
+import { createKanbanTask } from "./kanban-task";
 
 export type ChatCommandState = {
 	enableTools: boolean;
@@ -283,6 +284,7 @@ function formatHelp(state: ChatCommandState): string {
 		"/tools [on|off|toggle] - allow repo/file/shell tools",
 		"/yolo [on|off|toggle] - auto-approve tool use",
 		"/cwd <path> - change working directory",
+		"/task <what needs doing> - add it to the Kanban backlog for this workspace",
 		"/schedule create/list/trigger/delete - manage scheduled workflows",
 		"/abort - stop the current task",
 		"/mute [target] - ignore this thread or target until /unmute",
@@ -420,6 +422,26 @@ function createDefaultChatCommandHost(): ChatCommandHost {
 					workspaceRoot,
 				});
 				await context.reply(`cwd=${nextCwd}\nworkspaceRoot=${workspaceRoot}`);
+			},
+		})
+		.register("command", {
+			names: ["/task"],
+			run: async ({ args, state }, context) => {
+				const description = args.join(" ").trim();
+				if (!description) {
+					await context.reply(
+						"Usage: /task <what needs doing>\nAdds it to the Kanban backlog for this workspace.",
+					);
+					return;
+				}
+				// The conversation's repository, never its cwd when that is a worktree: a card
+				// belongs to the project, and its ready-for-review notification routes back by
+				// this same path.
+				const result = await createKanbanTask({
+					description,
+					projectPath: state.workspaceRoot || state.cwd,
+				});
+				await context.reply(result.message);
 			},
 		})
 		.register("command", {
