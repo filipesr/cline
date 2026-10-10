@@ -1,4 +1,5 @@
 import { HubUIClient } from "@cline/core";
+import type { HubUINotifyPayload } from "@cline/shared";
 
 import type { ConnectorThreadState } from "./thread-bindings";
 import {
@@ -19,9 +20,16 @@ import {
  * conversation down with it.
  */
 
+/**
+ * The slice of `HubUIClient` this module uses. It is assignable FROM the real client, so the
+ * compiler checks the shape instead of a cast hiding a mismatch -- the first version of this
+ * file invented a `subscribe` method and only the running connector found out.
+ */
 export interface UiNotifyClient {
 	connect(): Promise<void>;
-	subscribe(handlers: { onNotify?: (payload: unknown) => void }): void;
+	subscribeUI(handlers: {
+		onNotify?: (payload: HubUINotifyPayload) => void;
+	}): () => void;
 	close(): void;
 	dispose(): Promise<void>;
 }
@@ -69,14 +77,14 @@ function readNotification(
 export async function startUiNotifyDelivery<
 	TState extends ConnectorThreadState,
 >(input: StartUiNotifyDeliveryInput<TState>): Promise<UiNotifySubscription> {
-	const client =
+	const client: UiNotifyClient =
 		input.createClient?.() ??
-		(new HubUIClient({
+		new HubUIClient({
 			address: input.address ?? "",
 			authToken: input.authToken,
 			clientType: "cli",
 			displayName: input.displayName ?? "connector notifications",
-		}) as unknown as UiNotifyClient);
+		});
 
 	await client.connect();
 
@@ -90,7 +98,7 @@ export async function startUiNotifyDelivery<
 		inFlight.add(tracked);
 	};
 
-	client.subscribe({
+	const unsubscribe = client.subscribeUI({
 		onNotify: (payload) => {
 			try {
 				const notification = readNotification(payload);
@@ -127,6 +135,7 @@ export async function startUiNotifyDelivery<
 				await flush();
 			} finally {
 				try {
+					unsubscribe();
 					client.close();
 					await client.dispose();
 				} catch (error) {

@@ -1,22 +1,34 @@
+import { HubUIClient } from "@cline/core";
+import type { HubUINotifyPayload } from "@cline/shared";
 import { describe, expect, it, vi } from "vitest";
 
-import { startUiNotifyDelivery } from "./ui-notify-subscription";
+import {
+	startUiNotifyDelivery,
+	type UiNotifyClient,
+} from "./ui-notify-subscription";
 
-type Handlers = { onNotify?: (payload: unknown) => void };
+type Handlers = { onNotify?: (payload: HubUINotifyPayload) => void };
 
 function fakeClient() {
 	let handlers: Handlers = {};
+	let unsubscribed = 0;
 	return {
 		client: {
 			connect: async () => undefined,
-			subscribe: (h: Handlers) => {
+			subscribeUI: (h: Handlers) => {
 				handlers = h;
+				return () => {
+					unsubscribed += 1;
+				};
 			},
 			close: () => undefined,
 			dispose: async () => undefined,
 		},
 		emit(payload: unknown) {
-			handlers.onNotify?.(payload);
+			handlers.onNotify?.(payload as HubUINotifyPayload);
+		},
+		get unsubscribed() {
+			return unsubscribed;
 		},
 	};
 }
@@ -102,5 +114,31 @@ describe("startUiNotifyDelivery", () => {
 		fake.emit({ source: { workspacePath: "/code/app" } });
 		await subscription.flush();
 		expect(deliver).not.toHaveBeenCalled();
+	});
+});
+
+describe("UiNotifyClient", () => {
+	it("is satisfied by the real HubUIClient", () => {
+		// The first version of this module declared a `subscribe` method that HubUIClient does
+		// not have, and a cast hid it: every unit test passed against a fake with the invented
+		// shape, and the running connector died with "client.subscribe is not a function".
+		// This assignment is the check that was missing -- it fails to compile if the slice the
+		// module depends on ever drifts from the class it is given at runtime.
+		const real = null as unknown as HubUIClient;
+		const asSlice: UiNotifyClient = real;
+		expect(asSlice).toBe(real);
+	});
+
+	it("unsubscribes from the hub on stop", async () => {
+		const fake = fakeClient();
+		const subscription = await startUiNotifyDelivery({
+			createClient: () => fake.client,
+			readBindings: () => ({}),
+			deliver: async () => undefined,
+		});
+
+		expect(fake.unsubscribed).toBe(0);
+		await subscription.stop();
+		expect(fake.unsubscribed).toBe(1);
 	});
 });

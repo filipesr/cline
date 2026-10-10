@@ -880,6 +880,13 @@ class TelegramConnector extends ConnectorBase<
 					const bindings = readBindings<TelegramThreadState>(bindingsPath);
 					const serialized = bindings[threadKey]?.serializedThread;
 					if (!serialized) {
+						// The workspace matched but the conversation has no thread to post into.
+						// Worth a line: silence here is indistinguishable from "nothing matched".
+						loggerAdapter.core.log("Telegram notification has no thread to post to", {
+							severity: "warn",
+							transport: "telegram",
+							threadKey,
+						});
 						return;
 					}
 					const thread = JSON.parse(
@@ -887,6 +894,10 @@ class TelegramConnector extends ConnectorBase<
 						bot.reviver(),
 					) as Thread<TelegramThreadState>;
 					await thread.post({ raw: text });
+					loggerAdapter.core.log("Telegram notification delivered", {
+						transport: "telegram",
+						threadKey,
+					});
 				},
 				onError: (error) => {
 					loggerAdapter.core.log("Telegram notification delivery failed", {
