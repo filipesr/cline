@@ -86,6 +86,8 @@ export interface KanbanTaskRequest {
 	tags?: string;
 	category?: string;
 	priority?: string;
+	/** Which surface filed the card, so the board can show where a demand came from. */
+	source?: string;
 }
 
 export interface KanbanTaskResult {
@@ -138,6 +140,7 @@ export function buildKanbanCreateArgs(request: KanbanTaskRequest): string[] {
 		...(request.tags ? ["--tags", request.tags] : []),
 		...(request.category ? ["--category", request.category] : []),
 		...(request.priority ? ["--priority", request.priority] : []),
+		...(request.source ? ["--source", request.source] : []),
 	];
 }
 

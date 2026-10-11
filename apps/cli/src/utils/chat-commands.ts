@@ -36,6 +36,8 @@ export type MuteCommandInput = {
 
 export type ChatCommandContext = {
 	enabled: boolean;
+	/** The surface this command arrived on: "telegram", "slack", and so on. */
+	transport?: string;
 	botUserName?: string;
 	requireBotMention?: boolean;
 	host?: ChatCommandHost;
@@ -477,6 +479,9 @@ function createDefaultChatCommandHost(): ChatCommandHost {
 					tags,
 					category,
 					priority,
+					// Where it came from, so the board can show it. An avatar on a board one
+					// person works says nothing; the origin does.
+					source: context.transport,
 				});
 				await context.reply(result.message);
 			},

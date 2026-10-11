@@ -410,6 +410,7 @@ describe("/task", () => {
 			description: "Congelar a margem no aceite",
 			projectPath: "/code/partyshare",
 			start: false,
+			source: undefined,
 		});
 		expect(reply).toHaveBeenCalledWith(
 			"Added to the partyshare backlog: Congelar a margem (card 65f2d)",
@@ -493,6 +494,32 @@ describe("/task", () => {
 			description: "medir a suite",
 			projectPath: "/code/partyshare",
 			start: true,
+			source: undefined,
+		});
+	});
+});
+
+describe("where a card says it came from", () => {
+	it("files the card with the surface that asked for it", async () => {
+		// On a board one person works, who filed it says something; whose face it is does not.
+		const reply = vi.fn<(text: string) => Promise<void>>(async () => undefined);
+		vi.mocked(createKanbanTask).mockClear();
+
+		await maybeHandleChatCommand("/task medir a suite", {
+			enabled: true,
+			transport: "telegram",
+			getState: async () => ({
+				enableTools: true,
+				autoApproveTools: false,
+				cwd: "/code/app",
+				workspaceRoot: "/code/app",
+			}),
+			setState: async () => undefined,
+			reply,
+		});
+
+		expect(vi.mocked(createKanbanTask).mock.calls[0]?.[0]).toMatchObject({
+			source: "telegram",
 		});
 	});
 });

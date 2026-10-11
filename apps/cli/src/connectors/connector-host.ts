@@ -625,6 +625,7 @@ export async function handleConnectorUserTurn<
 	if (
 		await maybeHandleChatCommand(resolvedInput, {
 			enabled: true,
+			transport: input.transport,
 			botUserName: input.botUserName,
 			requireBotMention: !input.thread.isDM && !input.hookCommand,
 			host: input.chatCommandHost,
