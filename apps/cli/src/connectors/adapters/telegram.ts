@@ -20,6 +20,7 @@ import {
 import { createWorkspaceChatCommandHost } from "../../utils/plugin-chat-commands";
 import { ConnectorBase } from "../base";
 import { parseNotifiedOptions, resolveCardAnswer } from "../card-answer";
+import { buildQuestionCard, parseCardActionId } from "../card-question-message";
 import { createChatSdkLogger, enqueueThreadTurn } from "../chat-runtime";
 import { CONNECT_ALREADY_RUNNING_EXIT_CODE, isProcessRunning } from "../common";
 import {
@@ -998,7 +999,20 @@ class TelegramConnector extends ConnectorBase<
 							notifyMessages.delete(messageKey as string);
 						}
 					}
-					const sent = await thread.post({ raw: text });
+					// With choices, the question goes out as buttons: the answer is then a tap,
+					// not a list to read and a number to type. `fallbackText` keeps the plain
+					// version for anything that cannot render a card.
+					const notifiedOptions = parseNotifiedOptions(text);
+					const card = options.itemId
+						? buildQuestionCard({
+								text,
+								taskId: options.itemId,
+								options: notifiedOptions,
+							})
+						: undefined;
+					const sent = await (card
+						? thread.post({ card, fallbackText: text })
+						: thread.post({ raw: text }));
 					if (messageKey) {
 						notifyMessages.set(messageKey, sent);
 					}
@@ -1007,7 +1021,7 @@ class TelegramConnector extends ConnectorBase<
 							messageId: sent.id,
 							taskId: options.itemId,
 							projectPath: options.workspacePath,
-							options: parseNotifiedOptions(text),
+							options: notifiedOptions,
 						});
 					}
 					loggerAdapter.core.log("Telegram notification delivered", {
@@ -1235,6 +1249,44 @@ class TelegramConnector extends ConnectorBase<
 			);
 			return true;
 		};
+
+		// A tap on one of our buttons is an answer for that card's agent. The button carries
+		// which card and which choice, and the message it belongs to is remembered on disk, so
+		// a restart between question and tap does not lose it.
+		bot.onAction(async (event) => {
+			const action = parseCardActionId(event.actionId);
+			if (!action) {
+				return;
+			}
+			const thread = event.thread as Thread<TelegramThreadState> | null;
+			if (!thread) {
+				return;
+			}
+			const threadKey = resolveThreadBindingKey(thread);
+			const card = findRememberedCard(
+				readBindings<TelegramThreadState>(bindingsPath)[threadKey]
+					?.cardMessages,
+				event.messageId,
+			);
+			if (!card || card.taskId !== action.taskId) {
+				await thread.post({
+					raw: "I no longer know which card that button belongs to.",
+				});
+				return;
+			}
+			const result = await answerKanbanCard(card, String(action.optionIndex));
+			await thread.post({ raw: result.message });
+			loggerAdapter.core.log(
+				result.ok
+					? "Telegram card button delivered"
+					: "Telegram card button refused",
+				{
+					...(result.ok ? {} : { severity: "warn" as const }),
+					transport: "telegram",
+					taskId: card.taskId,
+				},
+			);
+		});
 
 		bot.onNewMention(async (thread, message) => {
 			await thread.subscribe();
