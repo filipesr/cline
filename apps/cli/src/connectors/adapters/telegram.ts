@@ -54,6 +54,7 @@ import {
 	readBindings,
 	resolveThreadTurnQueueKey,
 } from "../thread-bindings";
+import { collectThreadKeysToResubscribe } from "../thread-resubscription";
 import type {
 	ConnectCommandDefinition,
 	ConnectIo,
@@ -872,6 +873,35 @@ class TelegramConnector extends ConnectorBase<
 		// card entering review -- reach the conversation it belongs to. Best-effort: a hub we
 		// cannot reach is a normal condition and must never stop the connector from serving
 		// chat, which is its actual job.
+		// Subscriptions live in the chat library's in-memory state, so this restart forgot every
+		// one of them. In a group that silences ordinary messages entirely -- including a reply
+		// to something this bot posted -- with no log, until a slash command or a mention
+		// happens to subscribe the thread again.
+		for (const threadKey of collectThreadKeysToResubscribe(
+			readBindings<TelegramThreadState>(bindingsPath),
+		)) {
+			try {
+				const serialized =
+					readBindings<TelegramThreadState>(bindingsPath)[threadKey]
+						?.serializedThread;
+				if (!serialized) {
+					continue;
+				}
+				const thread = JSON.parse(
+					serialized,
+					bot.reviver(),
+				) as Thread<TelegramThreadState>;
+				await thread.subscribe();
+			} catch (error) {
+				loggerAdapter.core.log("Telegram thread resubscription failed", {
+					severity: "warn",
+					transport: "telegram",
+					threadKey,
+					error: String(error),
+				});
+			}
+		}
+
 		let notifySubscription:
 			| Awaited<ReturnType<typeof startUiNotifyDelivery>>
 			| undefined;
