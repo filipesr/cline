@@ -26,6 +26,43 @@ export interface TrackedCardMessage {
 	options?: string[];
 }
 
+export interface RememberedCardMessage extends TrackedCardMessage {
+	/** Id of the message the connector posted about this card. */
+	messageId: string;
+}
+
+const DEFAULT_MEMORY = 20;
+
+/**
+ * Remembers one more card message per conversation, newest first and bounded.
+ *
+ * It has to be remembered on disk rather than in a map: the first version kept it in memory and
+ * a connector restart between the question and the answer made the reply unrecognizable --
+ * which is the same mistake the chat library's in-memory subscriptions make, found twice in one
+ * afternoon. The bound exists because a conversation accumulates these forever otherwise, and
+ * nobody replies to a question from last week.
+ */
+export function rememberCardMessage(
+	existing: readonly RememberedCardMessage[] | undefined,
+	entry: RememberedCardMessage,
+	max = DEFAULT_MEMORY,
+): RememberedCardMessage[] {
+	const others = (existing ?? []).filter(
+		(item) => item.messageId !== entry.messageId,
+	);
+	return [entry, ...others].slice(0, max);
+}
+
+export function findRememberedCard(
+	existing: readonly RememberedCardMessage[] | undefined,
+	messageId: string | undefined,
+): TrackedCardMessage | undefined {
+	if (!messageId) {
+		return undefined;
+	}
+	return (existing ?? []).find((item) => item.messageId === messageId);
+}
+
 export interface CardReplyResult {
 	ok: boolean;
 	message: string;

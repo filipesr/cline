@@ -30,8 +30,8 @@ import {
 import { dispatchConnectorHook } from "../hooks";
 import {
 	answerKanbanCard,
-	resolveCardForReply,
-	type TrackedCardMessage,
+	findRememberedCard,
+	rememberCardMessage,
 } from "../kanban-card-reply";
 import {
 	type PendingConnectorApproval,
@@ -53,7 +53,9 @@ import {
 	loadThreadState,
 	persistMergedThreadState,
 	readBindings,
+	resolveThreadBindingKey,
 	resolveThreadTurnQueueKey,
+	writeBindings,
 } from "../thread-bindings";
 import { collectThreadKeysToResubscribe } from "../thread-resubscription";
 import type {
@@ -909,10 +911,32 @@ class TelegramConnector extends ConnectorBase<
 		// Lives only as long as the connector: after a restart the first update posts a new
 		// message, which is the honest outcome -- the old one is no longer ours to touch.
 		const notifyMessages = new Map<string, SentMessage>();
-		// Which card each delivered notification belongs to, so a reply *to* that message can be
-		// carried back into the card's session. Telegram's own affordance is the signal; nothing
-		// is inferred from timing.
-		const cardByMessageId = new Map<string, TrackedCardMessage>();
+		/**
+		 * Remembers, on disk, which card each delivered notification belongs to, so a reply *to*
+		 * that message can be carried back into the card's session. Telegram's own affordance is
+		 * the signal; nothing is inferred from timing.
+		 *
+		 * On disk and not in a map because the first version used a map, and a connector restart
+		 * between the question and the answer made the reply unrecognizable -- the answer then
+		 * fell through to an ordinary chat turn, silently.
+		 */
+		const rememberCardFor = (
+			threadKey: string,
+			entry: {
+				messageId: string;
+				taskId: string;
+				projectPath: string;
+				options?: string[];
+			},
+		): void => {
+			const bindings = readBindings<TelegramThreadState>(bindingsPath);
+			const binding = bindings[threadKey];
+			if (!binding) {
+				return;
+			}
+			binding.cardMessages = rememberCardMessage(binding.cardMessages, entry);
+			writeBindings(bindingsPath, bindings);
+		};
 		try {
 			notifySubscription = await startUiNotifyDelivery<TelegramThreadState>({
 				address: rpcAddress,
@@ -955,7 +979,8 @@ class TelegramConnector extends ConnectorBase<
 							if (options.itemId && options.workspacePath) {
 								// An edit keeps the message id, but re-registering costs nothing
 								// and survives a transport that does not.
-								cardByMessageId.set(edited.id, {
+								rememberCardFor(threadKey, {
+									messageId: edited.id,
 									taskId: options.itemId,
 									projectPath: options.workspacePath,
 									options: parseNotifiedOptions(text),
@@ -978,7 +1003,8 @@ class TelegramConnector extends ConnectorBase<
 						notifyMessages.set(messageKey, sent);
 					}
 					if (options.itemId && options.workspacePath) {
-						cardByMessageId.set(sent.id, {
+						rememberCardFor(threadKey, {
+							messageId: sent.id,
 							taskId: options.itemId,
 							projectPath: options.workspacePath,
 							options: parseNotifiedOptions(text),
@@ -1178,7 +1204,12 @@ class TelegramConnector extends ConnectorBase<
 			thread: Thread<TelegramThreadState>,
 			message: { text: string; replyTo?: { id: string } },
 		): Promise<boolean> => {
-			const card = resolveCardForReply(message.replyTo?.id, cardByMessageId);
+			const threadKey = resolveThreadBindingKey(thread);
+			const card = findRememberedCard(
+				readBindings<TelegramThreadState>(bindingsPath)[threadKey]
+					?.cardMessages,
+				message.replyTo?.id,
+			);
 			if (!card) {
 				return false;
 			}

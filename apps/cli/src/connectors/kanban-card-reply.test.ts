@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	answerKanbanCard,
 	buildKanbanInputArgs,
+	findRememberedCard,
+	rememberCardMessage,
 	resolveCardForReply,
 	type TrackedCardMessage,
 } from "./kanban-card-reply";
@@ -108,5 +110,41 @@ describe("answerKanbanCard", () => {
 			},
 		});
 		expect(result.message).toContain("not installed");
+	});
+});
+
+describe("remembering which message belongs to which card", () => {
+	const a = { messageId: "m1", taskId: "49084", projectPath: "/code/kanban" };
+	const b = { messageId: "m2", taskId: "05baa", projectPath: "/code/kanban" };
+
+	it("keeps the newest first", () => {
+		expect(rememberCardMessage(rememberCardMessage([], a), b)).toEqual([b, a]);
+	});
+
+	it("replaces an entry for the same message instead of duplicating it", () => {
+		// An edited notification keeps its message id, and the options may have changed.
+		const updated = { ...a, options: ["Sim", "Não"] };
+		expect(rememberCardMessage([a], updated)).toEqual([updated]);
+	});
+
+	it("forgets the oldest once the bound is reached", () => {
+		// A conversation accumulates these forever otherwise, and nobody replies to a question
+		// from last week.
+		let list = rememberCardMessage(undefined, a, 2);
+		list = rememberCardMessage(list, b, 2);
+		list = rememberCardMessage(list, { ...a, messageId: "m3" }, 2);
+		expect(list.map((item) => item.messageId)).toEqual(["m3", "m2"]);
+	});
+
+	it("finds the card a reply belongs to", () => {
+		expect(findRememberedCard([b, a], "m1")?.taskId).toBe("49084");
+	});
+
+	it("finds nothing for a message it never posted about", () => {
+		// This is what a restart used to cause: the memory was empty, so a reply fell through
+		// to an ordinary chat turn, silently.
+		expect(findRememberedCard([b, a], "m9")).toBeUndefined();
+		expect(findRememberedCard([b, a], undefined)).toBeUndefined();
+		expect(findRememberedCard(undefined, "m1")).toBeUndefined();
 	});
 });
