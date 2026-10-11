@@ -19,6 +19,7 @@ import {
 } from "../../utils/hub-runtime";
 import { createWorkspaceChatCommandHost } from "../../utils/plugin-chat-commands";
 import { ConnectorBase } from "../base";
+import { parseNotifiedOptions, resolveCardAnswer } from "../card-answer";
 import { createChatSdkLogger, enqueueThreadTurn } from "../chat-runtime";
 import { CONNECT_ALREADY_RUNNING_EXIT_CODE, isProcessRunning } from "../common";
 import {
@@ -957,6 +958,7 @@ class TelegramConnector extends ConnectorBase<
 								cardByMessageId.set(edited.id, {
 									taskId: options.itemId,
 									projectPath: options.workspacePath,
+									options: parseNotifiedOptions(text),
 								});
 							}
 							loggerAdapter.core.log("Telegram notification updated", {
@@ -979,6 +981,7 @@ class TelegramConnector extends ConnectorBase<
 						cardByMessageId.set(sent.id, {
 							taskId: options.itemId,
 							projectPath: options.workspacePath,
+							options: parseNotifiedOptions(text),
 						});
 					}
 					loggerAdapter.core.log("Telegram notification delivered", {
@@ -1179,15 +1182,26 @@ class TelegramConnector extends ConnectorBase<
 			if (!card) {
 				return false;
 			}
-			const result = await answerKanbanCard(card, message.text);
+			// The card's prompt may only accept a choice. Saying "passed it on" for an answer
+			// that will be ignored is worse than saying nothing, so an answer that cannot be
+			// placed comes back with the choices instead of travelling.
+			const answer = resolveCardAnswer(message.text, card.options ?? []);
+			if (answer.kind === "ask") {
+				await thread.post({ raw: answer.message });
+				return true;
+			}
+			const result = await answerKanbanCard(card, answer.text);
 			await thread.post({ raw: result.message });
-			if (!result.ok) {
-				loggerAdapter.core.log("Telegram card answer refused", {
-					severity: "warn",
+			loggerAdapter.core.log(
+				result.ok
+					? "Telegram card answer delivered"
+					: "Telegram card answer refused",
+				{
+					...(result.ok ? {} : { severity: "warn" as const }),
 					transport: "telegram",
 					taskId: card.taskId,
-				});
-			}
+				},
+			);
 			return true;
 		};
 

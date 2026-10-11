@@ -19,6 +19,11 @@ export interface TrackedCardMessage {
 	taskId: string;
 	/** Repository the card belongs to; the Kanban CLI needs it to find the board. */
 	projectPath: string;
+	/**
+	 * The choices this notification offered, as it displayed them. Kept so a reply naming one
+	 * can be turned into the number the card's prompt actually accepts.
+	 */
+	options?: string[];
 }
 
 export interface CardReplyResult {
