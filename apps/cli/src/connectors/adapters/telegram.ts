@@ -28,6 +28,11 @@ import {
 } from "../connector-host";
 import { dispatchConnectorHook } from "../hooks";
 import {
+	answerKanbanCard,
+	resolveCardForReply,
+	type TrackedCardMessage,
+} from "../kanban-card-reply";
+import {
 	type PendingConnectorApproval,
 	truncateConnectorText,
 } from "../runtime-turn";
@@ -873,6 +878,10 @@ class TelegramConnector extends ConnectorBase<
 		// Lives only as long as the connector: after a restart the first update posts a new
 		// message, which is the honest outcome -- the old one is no longer ours to touch.
 		const notifyMessages = new Map<string, SentMessage>();
+		// Which card each delivered notification belongs to, so a reply *to* that message can be
+		// carried back into the card's session. Telegram's own affordance is the signal; nothing
+		// is inferred from timing.
+		const cardByMessageId = new Map<string, TrackedCardMessage>();
 		try {
 			notifySubscription = await startUiNotifyDelivery<TelegramThreadState>({
 				address: rpcAddress,
@@ -910,10 +919,16 @@ class TelegramConnector extends ConnectorBase<
 						: undefined;
 					if (options.supersedesPrevious && previous) {
 						try {
-							notifyMessages.set(
-								messageKey as string,
-								await previous.edit({ raw: text }),
-							);
+							const edited = await previous.edit({ raw: text });
+							notifyMessages.set(messageKey as string, edited);
+							if (options.itemId && options.workspacePath) {
+								// An edit keeps the message id, but re-registering costs nothing
+								// and survives a transport that does not.
+								cardByMessageId.set(edited.id, {
+									taskId: options.itemId,
+									projectPath: options.workspacePath,
+								});
+							}
 							loggerAdapter.core.log("Telegram notification updated", {
 								transport: "telegram",
 								threadKey,
@@ -929,6 +944,12 @@ class TelegramConnector extends ConnectorBase<
 					const sent = await thread.post({ raw: text });
 					if (messageKey) {
 						notifyMessages.set(messageKey, sent);
+					}
+					if (options.itemId && options.workspacePath) {
+						cardByMessageId.set(sent.id, {
+							taskId: options.itemId,
+							projectPath: options.workspacePath,
+						});
 					}
 					loggerAdapter.core.log("Telegram notification delivered", {
 						transport: "telegram",
@@ -1116,6 +1137,30 @@ class TelegramConnector extends ConnectorBase<
 			await enqueueTurn(runTurn);
 		};
 
+		/**
+		 * A reply to a card's notification is an answer for that card's agent, not a new request
+		 * for this connector. Replying to anything else is an ordinary message.
+		 */
+		const maybeAnswerCard = async (
+			thread: Thread<TelegramThreadState>,
+			message: { text: string; replyTo?: { id: string } },
+		): Promise<boolean> => {
+			const card = resolveCardForReply(message.replyTo?.id, cardByMessageId);
+			if (!card) {
+				return false;
+			}
+			const result = await answerKanbanCard(card, message.text);
+			await thread.post({ raw: result.message });
+			if (!result.ok) {
+				loggerAdapter.core.log("Telegram card answer refused", {
+					severity: "warn",
+					transport: "telegram",
+					taskId: card.taskId,
+				});
+			}
+			return true;
+		};
+
 		bot.onNewMention(async (thread, message) => {
 			await thread.subscribe();
 			await persistTelegramThreadContext({
@@ -1136,6 +1181,9 @@ class TelegramConnector extends ConnectorBase<
 					transport: "telegram",
 				})
 			) {
+				return;
+			}
+			if (await maybeAnswerCard(thread, message)) {
 				return;
 			}
 			await handleTurn(thread, message.text);
@@ -1160,6 +1208,9 @@ class TelegramConnector extends ConnectorBase<
 					transport: "telegram",
 				})
 			) {
+				return;
+			}
+			if (await maybeAnswerCard(thread, message)) {
 				return;
 			}
 			await handleTurn(thread, message.text);

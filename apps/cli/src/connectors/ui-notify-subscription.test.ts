@@ -165,6 +165,7 @@ describe("what the subscription hands the adapter", () => {
 
 		expect(calls[0]?.[2]).toEqual({
 			itemId: "461e5",
+			workspacePath: "/code/app",
 			supersedesPrevious: true,
 		});
 		await subscription.stop();
@@ -190,7 +191,41 @@ describe("what the subscription hands the adapter", () => {
 		});
 		await subscription.flush();
 
-		expect(calls[0]).toEqual({ itemId: "461e5", supersedesPrevious: false });
+		expect(calls[0]).toEqual({
+			itemId: "461e5",
+			workspacePath: "/code/app",
+			supersedesPrevious: false,
+		});
+		await subscription.stop();
+	});
+});
+
+describe("what an adapter needs to answer back", () => {
+	it("passes the repository along with the item", async () => {
+		// Without it the adapter knows which card asked but not which board it lives on, so it
+		// cannot carry an answer back.
+		const fake = fakeClient();
+		const seen: unknown[] = [];
+		const subscription = await startUiNotifyDelivery({
+			createClient: () => fake.client,
+			readBindings: () => ({ t1: { state: { cwd: "/code/app" } } }),
+			deliver: async (_threadKey, _text, options) => {
+				seen.push(options);
+			},
+		});
+
+		fake.emit({
+			title: "Ready for review",
+			body: "card",
+			source: { workspacePath: "/code/app", itemId: "49084" },
+		});
+		await subscription.flush();
+
+		expect(seen[0]).toEqual({
+			itemId: "49084",
+			workspacePath: "/code/app",
+			supersedesPrevious: false,
+		});
 		await subscription.stop();
 	});
 });

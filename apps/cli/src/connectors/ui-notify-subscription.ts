@@ -55,6 +55,8 @@ export interface StartUiNotifyDeliveryInput<
 export interface NotifyDeliveryOptions {
 	/** The thing the notification is about, when it names one. The key for superseding. */
 	itemId?: string;
+	/** Repository the notification came from, for an adapter that can answer back into it. */
+	workspacePath?: string;
 	/** Update the previous notification about `itemId` rather than adding another. */
 	supersedesPrevious: boolean;
 }
@@ -131,6 +133,7 @@ export async function startUiNotifyDelivery<
 						input
 							.deliver(threadKey, notification.text, {
 								itemId: notification.source?.itemId,
+								workspacePath: notification.source?.workspacePath,
 								supersedesPrevious: notification.supersedesPrevious,
 							})
 							.catch((error) => {
