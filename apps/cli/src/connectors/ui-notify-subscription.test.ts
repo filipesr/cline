@@ -167,6 +167,7 @@ describe("what the subscription hands the adapter", () => {
 			itemId: "461e5",
 			workspacePath: "/code/app",
 			supersedesPrevious: true,
+			awaitingAnswer: false,
 		});
 		await subscription.stop();
 	});
@@ -195,6 +196,7 @@ describe("what the subscription hands the adapter", () => {
 			itemId: "461e5",
 			workspacePath: "/code/app",
 			supersedesPrevious: false,
+			awaitingAnswer: false,
 		});
 		await subscription.stop();
 	});
@@ -225,7 +227,57 @@ describe("what an adapter needs to answer back", () => {
 			itemId: "49084",
 			workspacePath: "/code/app",
 			supersedesPrevious: false,
+			awaitingAnswer: false,
 		});
+		await subscription.stop();
+	});
+});
+
+describe("whether the thing is waiting on the person", () => {
+	it("passes the flag through so the adapter can offer choices", async () => {
+		const fake = fakeClient();
+		const seen: unknown[] = [];
+		const subscription = await startUiNotifyDelivery({
+			createClient: () => fake.client,
+			readBindings: () => ({ t1: { state: { cwd: "/code/app" } } }),
+			deliver: async (_threadKey, _text, options) => {
+				seen.push(options);
+			},
+		});
+
+		fake.emit({
+			title: "Ready for review",
+			body: "card — 1) Sim 2) Não",
+			source: { workspacePath: "/code/app", itemId: "49084" },
+			awaitingAnswer: true,
+		});
+		await subscription.flush();
+
+		expect(seen[0]).toMatchObject({ awaitingAnswer: true });
+		await subscription.stop();
+	});
+
+	it("defaults to not waiting, so choices are never offered by accident", async () => {
+		// A completed question still carries its options in the text; offering them again sends
+		// a tap nowhere and reads like being asked twice.
+		const fake = fakeClient();
+		const seen: unknown[] = [];
+		const subscription = await startUiNotifyDelivery({
+			createClient: () => fake.client,
+			readBindings: () => ({ t1: { state: { cwd: "/code/app" } } }),
+			deliver: async (_threadKey, _text, options) => {
+				seen.push(options);
+			},
+		});
+
+		fake.emit({
+			title: "Ready for review",
+			body: "Completed AskUserQuestion: Devo gravar? — 1) Gravar 2) Descartar",
+			source: { workspacePath: "/code/app", itemId: "49084" },
+		});
+		await subscription.flush();
+
+		expect(seen[0]).toMatchObject({ awaitingAnswer: false });
 		await subscription.stop();
 	});
 });

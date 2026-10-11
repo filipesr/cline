@@ -1026,6 +1026,13 @@ export interface HubUINotifyPayload {
 	 * person for something must not set it: that one has to arrive on its own.
 	 */
 	supersedesPrevious?: boolean;
+	/**
+	 * Whether the thing this is about is waiting on the person right now, as opposed to
+	 * reporting something it already did. A subscriber that can offer choices should offer them
+	 * only for this: a second set of buttons for a question already answered sends the answer
+	 * nowhere, and looks to the person like being asked twice.
+	 */
+	awaitingAnswer?: boolean;
 }
 
 export interface HubUIShowWindowPayload {

@@ -1002,7 +1002,12 @@ class TelegramConnector extends ConnectorBase<
 					// With choices, the question goes out as buttons: the answer is then a tap,
 					// not a list to read and a number to type. `fallbackText` keeps the plain
 					// version for anything that cannot render a card.
-					const notifiedOptions = parseNotifiedOptions(text);
+					// Choices only for a card that is waiting right now. A completed question
+					// still carries its options in the text, and offering them again sends a tap
+					// nowhere while looking, to the person, like being asked twice.
+					const notifiedOptions = options.awaitingAnswer
+						? parseNotifiedOptions(text)
+						: [];
 					const card = options.itemId
 						? buildQuestionCard({
 								text,

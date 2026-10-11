@@ -59,6 +59,8 @@ export interface NotifyDeliveryOptions {
 	workspacePath?: string;
 	/** Update the previous notification about `itemId` rather than adding another. */
 	supersedesPrevious: boolean;
+	/** The thing is waiting on the person now, so choices can be offered for it. */
+	awaitingAnswer: boolean;
 }
 
 export interface UiNotifySubscription {
@@ -67,10 +69,13 @@ export interface UiNotifySubscription {
 	stop(): Promise<void>;
 }
 
-function readNotification(
-	payload: unknown,
-):
-	| { text: string; source?: UiNotifySource; supersedesPrevious: boolean }
+function readNotification(payload: unknown):
+	| {
+			text: string;
+			source?: UiNotifySource;
+			supersedesPrevious: boolean;
+			awaitingAnswer: boolean;
+	  }
 	| undefined {
 	if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
 		return undefined;
@@ -90,6 +95,7 @@ function readNotification(
 		text: [title, body].filter(Boolean).join("\n\n"),
 		source,
 		supersedesPrevious: record.supersedesPrevious === true,
+		awaitingAnswer: record.awaitingAnswer === true,
 	};
 }
 
@@ -135,6 +141,7 @@ export async function startUiNotifyDelivery<
 								itemId: notification.source?.itemId,
 								workspacePath: notification.source?.workspacePath,
 								supersedesPrevious: notification.supersedesPrevious,
+								awaitingAnswer: notification.awaitingAnswer,
 							})
 							.catch((error) => {
 								input.onError?.(error);
