@@ -7,6 +7,7 @@ import {
 	buildQuestionCard,
 	formatQuestionBody,
 	parseCardActionId,
+	resolveShownAnswer,
 } from "./card-question-message";
 
 describe("buildCardActionId / parseCardActionId", () => {
@@ -92,6 +93,26 @@ describe("buildAnsweredQuestionText", () => {
 	it("does not leave a blank gap when the question ends in whitespace", () => {
 		expect(buildAnsweredQuestionText("Gravar?\n\n", "Gravar")).toBe(
 			"Gravar?\n\n✅ Gravar",
+		);
+	});
+
+	// A typed answer can be a paragraph; the question must stay editable within Telegram's
+	// message limit, and the full answer is still the person's own message right below.
+	it("shortens a long typed answer", () => {
+		const answered = buildAnsweredQuestionText("Gravar?", "a".repeat(1000));
+		expect(answered.length).toBeLessThan(400);
+		expect(answered.endsWith("…")).toBe(true);
+	});
+});
+
+describe("resolveShownAnswer", () => {
+	it("shows the option's name when the reply chose one", () => {
+		expect(resolveShownAnswer("2", "caju", ["Manga", "Caju"])).toBe("Caju");
+	});
+
+	it("shows what was typed when the prompt takes free text", () => {
+		expect(resolveShownAnswer("comita e integra", "comita e integra", [])).toBe(
+			"comita e integra",
 		);
 	});
 });

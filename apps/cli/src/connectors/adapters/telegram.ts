@@ -39,6 +39,7 @@ import {
 	type CardButton,
 	formatQuestionBody,
 	parseCardActionId,
+	resolveShownAnswer,
 } from "../card-question-message";
 import { createChatSdkLogger, enqueueThreadTurn } from "../chat-runtime";
 import { CONNECT_ALREADY_RUNNING_EXIT_CODE, isProcessRunning } from "../common";
@@ -52,6 +53,7 @@ import {
 	answerKanbanCard,
 	findRememberedCard,
 	rememberCardMessage,
+	type TrackedCardMessage,
 } from "../kanban-card-reply";
 import {
 	type MessageAttachmentLike,
@@ -991,6 +993,45 @@ class TelegramConnector extends ConnectorBase<
 			}
 		>();
 		/**
+		 * Rewrites an answered question to show its answer, which also clears its buttons.
+		 *
+		 * Shared by a tap and a typed reply, so both leave the question looking the same. The copy
+		 * kept in memory is preferred; after a restart the text remembered on disk is edited
+		 * through the Bot API instead. A message that never had buttons is left alone: it is
+		 * progress or an announcement, and its remembered text may already be stale.
+		 */
+		const markCardAnswered = async (
+			messageId: string,
+			card: TrackedCardMessage,
+			shown: string,
+		): Promise<void> => {
+			const asked = questionMessages.get(messageId);
+			const hadButtons =
+				Boolean(asked) ||
+				(card.options?.length ?? 0) > 0 ||
+				(card.actions?.length ?? 0) > 0;
+			const text = asked?.text ?? card.text;
+			if (!hadButtons || !text) {
+				return;
+			}
+			const next = buildAnsweredQuestionText(text, shown);
+			try {
+				const edited = asked
+					? await asked.edit(next)
+					: await editTelegramCardMessage({
+							botToken,
+							messageRef: messageId,
+							text: next,
+						});
+				if (edited) {
+					questionMessages.delete(messageId);
+				}
+			} catch {
+				// An edit can be refused on a message too old to touch. The question then keeps
+				// its buttons; answering again is refused by the card.
+			}
+		};
+		/**
 		 * Remembers, on disk, which card each delivered notification belongs to, so a reply *to*
 		 * that message can be carried back into the card's session. Telegram's own affordance is
 		 * the signal; nothing is inferred from timing.
@@ -1458,7 +1499,7 @@ class TelegramConnector extends ConnectorBase<
 		 */
 		const maybeAnswerCard = async (
 			thread: Thread<TelegramThreadState>,
-			message: { text: string; replyTo?: { id: string } },
+			message: { id: string; text: string; replyTo?: { id: string } },
 		): Promise<boolean> => {
 			const threadKey = resolveThreadBindingKey(thread);
 			const card = findRememberedCard(
@@ -1478,7 +1519,23 @@ class TelegramConnector extends ConnectorBase<
 				return true;
 			}
 			const result = await answerKanbanCard(card, answer.text);
-			await thread.post({ raw: result.message });
+			if (result.ok && message.replyTo) {
+				// Answered the way a tap answers: the question shows what was typed and loses its
+				// buttons, and the reply gets a 👍. Reported from use: a separate "Passed to card"
+				// line said nothing the question could not show itself.
+				await markCardAnswered(
+					message.replyTo.id,
+					card,
+					resolveShownAnswer(answer.text, message.text, card.options ?? []),
+				);
+				try {
+					await telegram.addReaction(thread.id, message.id, "👍");
+				} catch {
+					// A chat that refuses reactions still has the rewritten question as proof.
+				}
+			} else {
+				await thread.post({ raw: result.message });
+			}
 			loggerAdapter.core.log(
 				result.ok
 					? "Telegram card answer delivered"
@@ -1578,16 +1635,7 @@ class TelegramConnector extends ConnectorBase<
 				// edited -- which is what removes the keyboard. Reported from use: "I can click
 				// several times because the button stays active and there is no indication it
 				// was answered."
-				const asked = questionMessages.get(event.messageId);
-				if (asked) {
-					try {
-						await asked.edit(buildAnsweredQuestionText(asked.text, chosen));
-						questionMessages.delete(event.messageId);
-					} catch {
-						// An edit can be refused on a message too old to touch. The question
-						// then keeps its buttons; answering again is refused by the card.
-					}
-				}
+				await markCardAnswered(event.messageId, card, chosen);
 				// No separate line for the choice: the question now shows it, and a second
 				// message saying the same thing is the noise this set out to remove.
 			} else {

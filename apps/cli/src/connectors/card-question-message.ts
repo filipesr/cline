@@ -99,7 +99,33 @@ export function buildAnsweredQuestionText(
 	chosenOption: string,
 ): string {
 	const trimmed = questionText.trimEnd();
-	return `${trimmed}\n\n✅ ${chosenOption}`;
+	return `${trimmed}\n\n✅ ${shortenAnswer(chosenOption.trim())}`;
+}
+
+/**
+ * A typed answer can be a paragraph, and the question it is written into still has to fit
+ * Telegram's message limit to be edited at all. The full text is the person's own message,
+ * right below, so the question only needs enough to say what it was answered with.
+ */
+const MAX_SHOWN_ANSWER = 280;
+
+function shortenAnswer(answer: string): string {
+	return answer.length > MAX_SHOWN_ANSWER
+		? `${answer.slice(0, MAX_SHOWN_ANSWER - 1).trimEnd()}…`
+		: answer;
+}
+
+/**
+ * What an answered question shows as its answer. A reply naming a choice travels as that
+ * choice's number, which means nothing on screen; the question shows the choice's name, the
+ * same as a tap would. A prompt with no choices took the text as typed, and shows it.
+ */
+export function resolveShownAnswer(
+	sent: string,
+	typed: string,
+	options: readonly string[],
+): string {
+	return options[Number(sent) - 1] ?? typed.trim();
 }
 
 /**
