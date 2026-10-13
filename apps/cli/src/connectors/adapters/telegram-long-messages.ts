@@ -4,24 +4,25 @@ import {
 	buildTelegramDocumentCaption,
 	buildTelegramDocumentName,
 	buildTelegramPreview,
-	TELEGRAM_CAPTION_LIMIT,
-	TELEGRAM_MESSAGE_LIMIT,
+	TELEGRAM_LONG_TEXT_LIMIT,
 } from "./telegram-format";
 
-const FILE_ABOVE_NOTE = "… (texto completo no arquivo acima)";
+const FILE_ABOVE_NOTE = "(texto completo no arquivo acima)";
 
 /**
- * The text of a message Telegram would cut, or nothing when it fits or is not plain text.
+ * The text of a message too long for the chat, or nothing when it fits or is not plain text.
  *
  * The Telegram adapter does not split a long message: it truncates it at 4096 characters
- * with an ellipsis, so a card's report or a command's answer simply lost its end. A message
+ * with an ellipsis, so a card's report or a command's answer simply lost its end. Well
+ * before that a message is a wall nobody reads, so past `TELEGRAM_LONG_TEXT_LIMIT` it goes
+ * out as a file. A message
  * that already carries files or a card is left alone -- it has a shape of its own to keep.
  */
 export function readOverflowingTelegramText(
 	message: AdapterPostableMessage,
 ): string | undefined {
 	if (typeof message === "string") {
-		return message.length > TELEGRAM_MESSAGE_LIMIT ? message : undefined;
+		return message.length > TELEGRAM_LONG_TEXT_LIMIT ? message : undefined;
 	}
 	if (!message || typeof message !== "object") {
 		return undefined;
@@ -33,19 +34,21 @@ export function readOverflowingTelegramText(
 		return undefined;
 	}
 	if ("raw" in message && typeof message.raw === "string") {
-		return message.raw.length > TELEGRAM_MESSAGE_LIMIT
+		return message.raw.length > TELEGRAM_LONG_TEXT_LIMIT
 			? message.raw
 			: undefined;
 	}
 	if ("markdown" in message && typeof message.markdown === "string") {
 		// Measured as Telegram shows it: markup characters do not count against the limit.
 		const shown = markdownToFormattable(message.markdown).text;
-		return shown.length > TELEGRAM_MESSAGE_LIMIT ? message.markdown : undefined;
+		return shown.length > TELEGRAM_LONG_TEXT_LIMIT
+			? message.markdown
+			: undefined;
 	}
 	return undefined;
 }
 
-/** The whole text as a `.md` file, under a caption with its opening. */
+/** The whole text as a `.md` file, under a caption with its end. */
 export function asTelegramDocumentPostable(
 	text: string,
 	now: Date,
@@ -67,7 +70,7 @@ export function asTelegramDocumentPostable(
  * later -- once its full text has gone out as a file just before it.
  */
 export function buildTelegramShortPreview(text: string): string {
-	return buildTelegramPreview(text, TELEGRAM_CAPTION_LIMIT, FILE_ABOVE_NOTE);
+	return buildTelegramPreview(text, TELEGRAM_LONG_TEXT_LIMIT, FILE_ABOVE_NOTE);
 }
 
 type PostingAdapter<TResult> = {
@@ -104,7 +107,7 @@ export function sendLongMessagesAsDocuments<TResult>(
 /**
  * A card notice cannot simply become a file: its buttons hang off it, and a tap edits it
  * afterwards. So the full text goes first as a file, and the notice stays a message carrying
- * its opening -- buttons, replies and edits work on it as before.
+ * its end -- the question its buttons answer. Buttons, replies and edits work on it as before.
  */
 export function splitLongCardNotice(
 	text: string,
@@ -117,4 +120,21 @@ export function splitLongCardNotice(
 		text: buildTelegramShortPreview(text),
 		document: asTelegramDocumentPostable(text, now),
 	};
+}
+
+/** Room left for a status line's detail beside the card's title and id. */
+const STATUS_DETAIL_LIMIT = TELEGRAM_LONG_TEXT_LIMIT - 200;
+
+/**
+ * The card's running status line is edited in place every few seconds, and a file cannot be
+ * edited as a message. So instead of going out as a file, its detail keeps only its end --
+ * the latest of what the agent is doing.
+ */
+export function clipStatusDetail(
+	detail: string | undefined,
+): string | undefined {
+	if (!detail || detail.length <= STATUS_DETAIL_LIMIT) {
+		return detail;
+	}
+	return `…${detail.slice(detail.length - (STATUS_DETAIL_LIMIT - 1)).trimStart()}`;
 }

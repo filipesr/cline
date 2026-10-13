@@ -5,8 +5,13 @@ import type { ConnectorThreadState } from "../thread-bindings";
 
 const TELEGRAM_API_BASE = "https://api.telegram.org";
 export const TELEGRAM_MESSAGE_LIMIT = 4096;
-export const TELEGRAM_CAPTION_LIMIT = 1024;
-const TELEGRAM_DOCUMENT_NOTE = "… (resposta completa no arquivo)";
+/**
+ * Past this many characters, as Telegram shows them, a text goes out as a `.md` file. Well
+ * under Telegram's own 4096: a wall of text in a chat is read by nobody, and its end -- the
+ * conclusion, the question -- is what the conversation needs to see.
+ */
+export const TELEGRAM_LONG_TEXT_LIMIT = 900;
+const TELEGRAM_DOCUMENT_NOTE = "(resposta completa no arquivo)";
 const TELEGRAM_DOCUMENT_SLUG_LIMIT = 60;
 
 type TelegramMessageEntity = {
@@ -237,8 +242,9 @@ export function buildTelegramDocumentName(text: string, now: Date): string {
 }
 
 /**
- * The opening of a long text as plain text, cut at a word and closed with `note`, so the
- * conversation still reads without opening the file that carries the rest.
+ * The end of a long text as plain text, cut at a word and headed by `note`, so the
+ * conversation still reads without opening the file: the end is where a reply lands its
+ * conclusion and asks its question.
  */
 export function buildTelegramPreview(
 	text: string,
@@ -249,20 +255,24 @@ export function buildTelegramPreview(
 		.text.replace(/[ \t]+/g, " ")
 		.replace(/\n{3,}/g, "\n\n")
 		.trim();
-	const room = limit - note.length;
-	let cut = plain.slice(0, room);
-	const lastBreak = Math.max(cut.lastIndexOf(" "), cut.lastIndexOf("\n"));
-	if (plain.length > room && lastBreak > room / 2) {
-		cut = cut.slice(0, lastBreak);
+	const head = `${note}\n\n`;
+	const room = limit - head.length;
+	if (plain.length <= room) {
+		return `${head}${plain}`;
 	}
-	return `${cut.trimEnd()}${note}`;
+	let tail = plain.slice(plain.length - (room - 1));
+	const firstBreak = tail.search(/[ \n]/);
+	if (firstBreak >= 0 && firstBreak < room / 2) {
+		tail = tail.slice(firstBreak + 1);
+	}
+	return `${head}…${tail.trimStart()}`;
 }
 
-/** What shows under the file in the chat: the reply's opening. */
+/** What shows under the file in the chat: the reply's end. */
 export function buildTelegramDocumentCaption(text: string): string {
 	return buildTelegramPreview(
 		text,
-		TELEGRAM_CAPTION_LIMIT,
+		TELEGRAM_LONG_TEXT_LIMIT,
 		TELEGRAM_DOCUMENT_NOTE,
 	);
 }
@@ -313,10 +323,14 @@ export async function postTelegramFormattedReply<
 	let sentPayloadCount = 0;
 	try {
 		payloads = buildTelegramFormattedPayloads(input.thread.id, input.text);
-		// More than one message means Telegram would get the reply in slices cut every 4096
-		// characters, mid-word or mid-code-block. One file reads better; the slices stay as
-		// the way out when Telegram refuses the file.
-		if (payloads.length > 1) {
+		// A long reply is a wall in the chat, and past 4096 characters Telegram would get it in
+		// slices cut mid-word or mid-code-block. One file reads better, with the reply's end
+		// under it; the slices stay as the way out when Telegram refuses the file.
+		const shownLength = payloads.reduce(
+			(length, payload) => length + payload.text.length,
+			0,
+		);
+		if (shownLength > TELEGRAM_LONG_TEXT_LIMIT) {
 			try {
 				await sendTelegramDocument({
 					apiBaseUrl,

@@ -3,13 +3,14 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	asTelegramDocumentPostable,
 	buildTelegramShortPreview,
+	clipStatusDetail,
 	readOverflowingTelegramText,
 	sendLongMessagesAsDocuments,
 	splitLongCardNotice,
 } from "./telegram-long-messages";
 
 const NOW = new Date(2026, 9, 13, 8, 0);
-const LONG = `# Relatório do card\n\n${"palavra ".repeat(700)}`;
+const LONG = `# Relatório do card\n\n${"palavra ".repeat(700)}\n\nConclusão: pronto. Posso fazer o merge?`;
 
 function fakeAdapter() {
 	const posted: AdapterPostableMessage[] = [];
@@ -33,11 +34,20 @@ describe("readOverflowingTelegramText", () => {
 
 	it("leaves a message that fits alone", () => {
 		expect(readOverflowingTelegramText({ raw: "curto" })).toBeUndefined();
+		expect(
+			readOverflowingTelegramText({ raw: "a".repeat(900) }),
+		).toBeUndefined();
+	});
+
+	it("turns anything past 900 characters into a file, well under Telegram's 4096", () => {
+		const text = "a".repeat(901);
+		expect(readOverflowingTelegramText({ raw: text })).toBe(text);
 	});
 
 	it("measures markdown as Telegram shows it, not by its markup", () => {
-		// 4000 visible characters wrapped in bold: over 4096 written, under it shown.
-		const text = `**${"a".repeat(2000)}** **${"b".repeat(2000)}**`;
+		// 898 visible characters wrapped in bold: over 900 written, under it shown.
+		const text = `**${"a".repeat(450)}** **${"b".repeat(447)}**`;
+		expect(text.length).toBeGreaterThan(900);
 		expect(readOverflowingTelegramText({ markdown: text })).toBeUndefined();
 	});
 
@@ -60,8 +70,13 @@ describe("readOverflowingTelegramText", () => {
 describe("asTelegramDocumentPostable", () => {
 	it("carries the whole text as a named .md file under a short caption", async () => {
 		const postable = asTelegramDocumentPostable(LONG, NOW);
-		expect(postable.raw.length).toBeLessThanOrEqual(1024);
-		expect(postable.raw.startsWith("Relatório do card")).toBe(true);
+		expect(postable.raw.length).toBeLessThanOrEqual(900);
+		expect(postable.raw.startsWith("(resposta completa no arquivo)")).toBe(
+			true,
+		);
+		expect(
+			postable.raw.endsWith("Conclusão: pronto. Posso fazer o merge?"),
+		).toBe(true);
 		const [file] = postable.files;
 		expect(file?.filename).toBe("relatorio-do-card.md");
 		expect(file?.mimeType).toBe("text/markdown");
@@ -70,11 +85,21 @@ describe("asTelegramDocumentPostable", () => {
 });
 
 describe("buildTelegramShortPreview", () => {
-	it("keeps the start of the text and points at the file above", () => {
+	it("keeps the end of the text -- its conclusion and question -- and points at the file above", () => {
 		const preview = buildTelegramShortPreview(LONG);
-		expect(preview.length).toBeLessThanOrEqual(1024);
-		expect(preview.startsWith("Relatório do card")).toBe(true);
-		expect(preview.endsWith("… (texto completo no arquivo acima)")).toBe(true);
+		expect(preview.length).toBeLessThanOrEqual(900);
+		expect(preview.startsWith("(texto completo no arquivo acima)\n\n…")).toBe(
+			true,
+		);
+		expect(preview).not.toContain("Relatório do card");
+		expect(preview.endsWith("Conclusão: pronto. Posso fazer o merge?")).toBe(
+			true,
+		);
+	});
+
+	it("cuts the start at a word, not mid-word", () => {
+		const preview = buildTelegramShortPreview(LONG);
+		expect(preview).toMatch(/\n\n…palavra /);
 	});
 });
 
@@ -87,7 +112,7 @@ describe("sendLongMessagesAsDocuments", () => {
 
 		const [message] = posted as Array<{ raw: string; files: unknown[] }>;
 		expect(message?.files).toHaveLength(1);
-		expect(message?.raw.length).toBeLessThanOrEqual(1024);
+		expect(message?.raw.length).toBeLessThanOrEqual(900);
 	});
 
 	it("passes a message that fits through untouched", async () => {
@@ -125,15 +150,31 @@ describe("splitLongCardNotice", () => {
 	it("sends a long card notice's full text as a file and keeps a short message for its buttons", () => {
 		const notice = splitLongCardNotice(LONG, NOW);
 		expect(notice.document?.files[0]?.filename).toBe("relatorio-do-card.md");
-		expect(notice.text.length).toBeLessThanOrEqual(1024);
-		expect(notice.text.endsWith("(texto completo no arquivo acima)")).toBe(
+		expect(notice.text.length).toBeLessThanOrEqual(900);
+		expect(notice.text.startsWith("(texto completo no arquivo acima)")).toBe(
 			true,
 		);
+		expect(notice.text.endsWith("Posso fazer o merge?")).toBe(true);
 	});
 
 	it("leaves a notice that fits as it is", () => {
 		expect(splitLongCardNotice("Pronto para revisão", NOW)).toEqual({
 			text: "Pronto para revisão",
 		});
+	});
+});
+
+describe("clipStatusDetail", () => {
+	it("keeps a status line that is edited in place short enough to stay a message", () => {
+		const detail = `${"antes ".repeat(200)}agora rodando os testes`;
+		const clipped = clipStatusDetail(detail) as string;
+		expect(clipped.length).toBeLessThanOrEqual(700);
+		expect(clipped.startsWith("…")).toBe(true);
+		expect(clipped.endsWith("agora rodando os testes")).toBe(true);
+	});
+
+	it("leaves a short detail alone", () => {
+		expect(clipStatusDetail("lendo arquivos")).toBe("lendo arquivos");
+		expect(clipStatusDetail(undefined)).toBeUndefined();
 	});
 });

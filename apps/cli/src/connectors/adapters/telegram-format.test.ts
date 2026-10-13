@@ -157,7 +157,7 @@ describe("telegram formatted replies", () => {
 
 	it("sends a reply too long for one message as a single .md document", async () => {
 		const { thread } = createThread("telegram:-100123:7");
-		const text = `# Pesquisa de filas\n\n${"palavra ".repeat(700)}`;
+		const text = `# Pesquisa de filas\n\n${"palavra ".repeat(700)}\n\nQual fila usamos?`;
 		const fetchImpl = vi.fn(async (_url: string | URL, _init?: RequestInit) => {
 			return new Response(JSON.stringify({ ok: true, result: {} }), {
 				status: 200,
@@ -182,9 +182,11 @@ describe("telegram formatted replies", () => {
 		expect(document.name).toBe("pesquisa-de-filas.md");
 		expect(await document.text()).toBe(text);
 		const caption = String(form.get("caption"));
-		expect(caption.length).toBeLessThanOrEqual(1024);
-		expect(caption.startsWith("Pesquisa de filas")).toBe(true);
-		expect(caption).toMatch(/palavra… \(resposta completa no arquivo\)$/);
+		expect(caption.length).toBeLessThanOrEqual(900);
+		expect(
+			caption.startsWith("(resposta completa no arquivo)\n\n…palavra"),
+		).toBe(true);
+		expect(caption.endsWith("Qual fila usamos?")).toBe(true);
 		expect(form.get("parse_mode")).toBeNull();
 		expect(thread.post).not.toHaveBeenCalled();
 	});
@@ -259,13 +261,53 @@ describe("telegram formatted replies", () => {
 		expect(slug.endsWith("-")).toBe(false);
 	});
 
-	it("captions the document with its start as plain text", () => {
+	it("captions the document with its end as plain text", () => {
 		const caption = buildTelegramDocumentCaption(
-			`**Resumo** com \`código\`\n\n${"palavra ".repeat(300)}`,
+			`${"palavra ".repeat(300)}\n\n**Conclusão** com \`código\``,
 		);
-		expect(caption.startsWith("Resumo com código")).toBe(true);
-		expect(caption.length).toBeLessThanOrEqual(1024);
-		expect(caption.endsWith("… (resposta completa no arquivo)")).toBe(true);
+		expect(caption.startsWith("(resposta completa no arquivo)")).toBe(true);
+		expect(caption.length).toBeLessThanOrEqual(900);
+		expect(caption.endsWith("Conclusão com código")).toBe(true);
+	});
+
+	it("sends a reply past 900 characters as a document even when one message would hold it", async () => {
+		const { thread } = createThread("telegram:123");
+		const fetchImpl = vi.fn(async (_url: string | URL, _init?: RequestInit) => {
+			return new Response(JSON.stringify({ ok: true, result: {} }), {
+				status: 200,
+			});
+		});
+
+		await postTelegramFormattedReply({
+			thread,
+			text: "a".repeat(901),
+			botToken: "token",
+			logger: createLogger(),
+			fetchImpl,
+		});
+
+		expect(fetchImpl).toHaveBeenCalledTimes(1);
+		expect(String(fetchImpl.mock.calls[0]?.[0])).toMatch(/\/sendDocument$/);
+	});
+
+	it("keeps a reply of 900 characters as a message", async () => {
+		const { thread } = createThread("telegram:123");
+		const fetchImpl = vi.fn(async (_url: string | URL, _init?: RequestInit) => {
+			return new Response(JSON.stringify({ ok: true, result: {} }), {
+				status: 200,
+			});
+		});
+
+		await postTelegramFormattedReply({
+			thread,
+			text: "a".repeat(900),
+			botToken: "token",
+			logger: createLogger(),
+			fetchImpl,
+		});
+
+		expect(fetchImpl).toHaveBeenCalledTimes(1);
+		expect(String(fetchImpl.mock.calls[0]?.[0])).toMatch(/\/sendMessage$/);
 	});
 
 	it("falls back to raw text when formatted send fails", async () => {

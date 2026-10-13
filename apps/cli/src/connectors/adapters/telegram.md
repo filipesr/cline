@@ -91,9 +91,9 @@ You can also pass a manual `--hook-command` that returns `{"action":"deny"}` for
 
 Telegram final assistant replies are sent directly through Telegram `sendMessage` payloads with message entities. This avoids Telegram markdown parse failures for raw model text. If entity sending fails, the connector falls back to raw text.
 
-A final assistant reply too long for one Telegram message (4096 characters) arrives as a single `.md` file holding the full reply, captioned with its opening lines. The file is named after the reply's first heading, or `resposta-YYYY-MM-DD-HHmm.md` when it has none. If Telegram refuses the file, the reply is split across messages instead.
+A final assistant reply longer than 900 characters (as Telegram shows them) arrives as a single `.md` file holding the full reply, captioned with its closing lines — where the conclusion and any question are. The file is named after the reply's first heading, or `resposta-YYYY-MM-DD-HHmm.md` when it has none. If Telegram refuses the file, the reply is split across messages instead.
 
-Every other message the connector posts — command answers such as `/task`, Kanban card notices, scheduled results and task updates — follows the same rule: past 4096 characters it goes out as a `.md` file instead of being cut. A card notice that carries buttons keeps them: its full text goes first as a file, and the notice follows as a short message with its opening, so taps, replies and edits work as before. Messages edited in place (the card's running status line, tool progress) are not turned into files.
+Every other message the connector posts — command answers such as `/task`, Kanban card notices, scheduled results and task updates — follows the same rule: past 900 characters it goes out as a `.md` file, with its end shown in the chat. A card notice that carries buttons keeps them: its full text goes first as a file, and the notice follows as a short message with its end, so taps, replies and edits work as before. Messages edited in place (the card's running status line, tool progress) are not turned into files; a status line's detail keeps only its latest part instead.
 
 Telegram final assistant replies are sent after the runtime turn completes. Google Chat and WhatsApp use the shared connector runtime streaming path for incremental assistant text.
 

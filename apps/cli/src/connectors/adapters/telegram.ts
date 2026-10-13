@@ -107,6 +107,7 @@ import {
 } from "./prompts";
 import { postTelegramFormattedReply } from "./telegram-format";
 import {
+	clipStatusDetail,
 	sendLongMessagesAsDocuments,
 	splitLongCardNotice,
 } from "./telegram-long-messages";
@@ -849,7 +850,8 @@ class TelegramConnector extends ConnectorBase<
 			userName: options.botUsername,
 			logger,
 		});
-		// The adapter cuts anything past 4096 characters; a long message goes out as a file.
+		// The adapter cuts anything past 4096 characters, and well before that a message is a
+		// wall nobody reads: a long one goes out as a file, its end shown in the chat.
 		sendLongMessagesAsDocuments(telegram);
 		const bot = new Chat({
 			userName: options.botUsername,
@@ -1067,9 +1069,9 @@ class TelegramConnector extends ConnectorBase<
 									title: options.title,
 									taskId: options.itemId,
 									column: options.column,
-									detail: options.body,
+									detail: clipStatusDetail(options.body),
 								})
-							: text;
+							: (clipStatusDetail(text) ?? text);
 					if (options.supersedesPrevious && previous) {
 						try {
 							const edited = await previous.edit({ raw: anchorText });
@@ -1127,8 +1129,8 @@ class TelegramConnector extends ConnectorBase<
 						hasChoices: notifiedOptions.length > 0,
 					});
 					let bodyText = options.supersedesPrevious ? anchorText : questionText;
-					// A long notice -- a card's report, a long question -- would be cut. Its full
-					// text goes first as a file; the notice keeps its opening, and with it the
+					// A long notice -- a card's report, a long question -- is a wall. Its full
+					// text goes first as a file; the notice keeps its end, and with it the
 					// buttons, the reply to the card and the edits that follow. The running
 					// commentary is edited every few seconds and stays as it is.
 					if (!options.supersedesPrevious) {
