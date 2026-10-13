@@ -8,6 +8,7 @@ import {
 } from "./telegram-format";
 
 const FILE_ABOVE_NOTE = "(texto completo no arquivo acima)";
+const FILE_ATTACHED_NOTE = "(texto completo no arquivo)";
 
 /**
  * The text of a message too long for the chat, or nothing when it fits or is not plain text.
@@ -112,13 +113,23 @@ export function sendLongMessagesAsDocuments<TResult>(
 export function splitLongCardNotice(
 	text: string,
 	now: Date,
-): { text: string; document?: { raw: string; files: FileUpload[] } } {
+): {
+	text: string;
+	document?: { raw: string; files: FileUpload[] };
+	/** The notice as the caption of its own file, for when the two can go out as one message. */
+	caption?: string;
+} {
 	if (readOverflowingTelegramText({ markdown: text }) === undefined) {
 		return { text };
 	}
 	return {
 		text: buildTelegramShortPreview(text),
 		document: asTelegramDocumentPostable(text, now),
+		caption: buildTelegramPreview(
+			text,
+			TELEGRAM_LONG_TEXT_LIMIT,
+			FILE_ATTACHED_NOTE,
+		),
 	};
 }
 

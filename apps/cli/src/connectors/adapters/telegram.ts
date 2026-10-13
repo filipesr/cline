@@ -1224,29 +1224,6 @@ class TelegramConnector extends ConnectorBase<
 						hasChoices: notifiedOptions.length > 0,
 					});
 					let bodyText = options.supersedesPrevious ? anchorText : questionText;
-					// A long notice -- a card's report, a long question -- is a wall. Its full
-					// text goes first as a file; the notice keeps its end, and with it the
-					// buttons, the reply to the card and the edits that follow. The running
-					// commentary is edited every few seconds and stays as it is.
-					if (!options.supersedesPrevious) {
-						const notice = splitLongCardNotice(bodyText, new Date());
-						if (notice.document) {
-							try {
-								await thread.post(notice.document);
-								bodyText = notice.text;
-							} catch (error) {
-								loggerAdapter.core.log(
-									"Telegram notice file refused; sending the notice as it is",
-									{
-										severity: "warn",
-										transport: "telegram",
-										threadKey,
-										error: String(error),
-									},
-								);
-							}
-						}
-					}
 					// A real reply, so the message links back to the card's own message. The
 					// library cannot make one -- its Telegram adapter has no `reply` -- and a
 					// tap is routed from the incoming update alone, so a message sent straight
@@ -1255,18 +1232,73 @@ class TelegramConnector extends ConnectorBase<
 						!options.supersedesPrevious && previous && options.itemId
 							? splitTelegramMessageId(previous)
 							: undefined;
+					// A long notice -- a card's report, a long question -- is a wall. Its full
+					// text goes as a file; the notice keeps its end, and with it the buttons,
+					// the reply to the card and the edits that follow. The running commentary
+					// is edited every few seconds and stays as it is.
+					const notice = options.supersedesPrevious
+						? { text: bodyText }
+						: splitLongCardNotice(bodyText, new Date());
+					const fullText = bodyText;
+					// The file on its own message, just before the notice. Only when the two
+					// could not go out as one.
+					const postNoticeFile = async (): Promise<void> => {
+						if (!notice.document) {
+							return;
+						}
+						try {
+							await thread.post(notice.document);
+							bodyText = notice.text;
+						} catch (error) {
+							loggerAdapter.core.log(
+								"Telegram notice file refused; sending the notice as it is",
+								{
+									severity: "warn",
+									transport: "telegram",
+									threadKey,
+									error: String(error),
+								},
+							);
+						}
+					};
+					if (!anchorRef) {
+						await postNoticeFile();
+					}
 					if (anchorRef && options.itemId) {
 						const taskId = options.itemId;
-						const replied = await postTelegramCardReply({
-							botToken,
-							request: {
-								chatId: anchorRef.chatId,
-								messageThreadId: resolveTelegramTopicId(threadKey),
-								replyToMessageId: anchorRef.messageId,
-								text: bodyText,
-								buttons,
-							},
-						});
+						const reply = (text: string, withFile: boolean) =>
+							postTelegramCardReply({
+								botToken,
+								request: {
+									chatId: anchorRef.chatId,
+									messageThreadId: resolveTelegramTopicId(threadKey),
+									replyToMessageId: anchorRef.messageId,
+									text,
+									buttons,
+									...(withFile && notice.document
+										? {
+												document: {
+													data: fullText,
+													filename:
+														notice.document.files[0]?.filename ?? "texto.md",
+												},
+											}
+										: {}),
+								},
+							});
+						// One message where it can: the file, with the notice as its caption and
+						// the buttons under it. Reported from use: the file and the question came
+						// as two messages, one after the other.
+						const withFile =
+							notice.document && notice.caption
+								? await reply(notice.caption, true)
+								: undefined;
+						if (withFile && notice.caption) {
+							bodyText = notice.caption;
+						} else {
+							await postNoticeFile();
+						}
+						const replied = withFile ?? (await reply(bodyText, false));
 						if (replied) {
 							if (buttons.length > 0) {
 								questionMessages.set(replied.messageId, {

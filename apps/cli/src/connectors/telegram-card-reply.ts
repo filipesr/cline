@@ -42,25 +42,62 @@ interface TelegramResponse {
 	result?: { message_id?: number };
 }
 
+/** A file sent along with a message's text, which then becomes the file's caption. */
+export interface CardReplyDocument {
+	data: string;
+	filename: string;
+}
+
+/**
+ * A multipart body, which is the only way to upload a file. Its fields are strings, so the
+ * nested ones -- the reply target, the keyboard -- travel as JSON, as the Bot API expects.
+ */
+function toFormData(
+	body: Record<string, unknown>,
+	document: CardReplyDocument,
+): FormData {
+	const form = new FormData();
+	for (const [key, value] of Object.entries(body)) {
+		form.append(
+			key,
+			typeof value === "object" ? JSON.stringify(value) : String(value),
+		);
+	}
+	form.append(
+		"document",
+		new Blob([document.data], { type: "text/markdown;charset=utf-8" }),
+		document.filename,
+	);
+	return form;
+}
+
 /**
  * Calls the Bot API with the text rendered as markdown, and once more as plain text when Telegram
  * refuses the markup -- losing the notice over a stray asterisk would be worse than showing it.
  */
 async function callWithMarkdownFallback(input: {
 	botToken: string;
-	method: "sendMessage" | "editMessageText";
+	method:
+		| "sendMessage"
+		| "sendDocument"
+		| "editMessageText"
+		| "editMessageCaption";
 	buildBody: (plain: boolean) => Record<string, unknown>;
+	document?: CardReplyDocument;
 	fetchImpl?: typeof fetch;
 }): Promise<TelegramResponse> {
 	const call = input.fetchImpl ?? fetch;
 	const send = async (plain: boolean): Promise<TelegramResponse> => {
+		const body = input.buildBody(plain);
 		const response = await call(
 			`https://api.telegram.org/bot${input.botToken}/${input.method}`,
-			{
-				method: "POST",
-				headers: { "content-type": "application/json" },
-				body: JSON.stringify(input.buildBody(plain)),
-			},
+			input.document
+				? { method: "POST", body: toFormData(body, input.document) }
+				: {
+						method: "POST",
+						headers: { "content-type": "application/json" },
+						body: JSON.stringify(body),
+					},
 		);
 		return (await response.json()) as TelegramResponse;
 	};
@@ -117,6 +154,12 @@ export interface CardReplyRequest {
 	text: string;
 	/** The buttons, in order, each carrying its own callback data. Empty means no keyboard. */
 	buttons: readonly CardButton[];
+	/**
+	 * The notice's full text as a file, when it is too long to read in the chat. Sent with the
+	 * file, `text` is its caption: one message holding the file, the question and its buttons,
+	 * where there used to be the file and then the question on its own.
+	 */
+	document?: CardReplyDocument;
 }
 
 function buildInlineKeyboard(
@@ -127,8 +170,17 @@ function buildInlineKeyboard(
 	]);
 }
 
+/** A message carrying a file has a caption where a text message has its text. */
+function asCaptionWhen(
+	caption: boolean,
+	rendered: { text: string; parse_mode?: "MarkdownV2" },
+): Record<string, string> {
+	const { text, ...rest } = rendered;
+	return caption ? { caption: text, ...rest } : { text, ...rest };
+}
+
 /**
- * The `sendMessage` body.
+ * The `sendMessage` body, or the `sendDocument` one when a file goes with it.
  *
  * `allow_sending_without_reply` matters: an anchor deleted by hand would otherwise make
  * Telegram refuse the whole message, and losing a question because the message it pointed at
@@ -144,7 +196,10 @@ export function buildCardReplyBody(
 		...(request.messageThreadId
 			? { message_thread_id: Number(request.messageThreadId) }
 			: {}),
-		...renderText(request.text, options.plain === true),
+		...asCaptionWhen(
+			request.document !== undefined,
+			renderText(request.text, options.plain === true),
+		),
 		reply_parameters: {
 			message_id: Number(request.replyToMessageId),
 			allow_sending_without_reply: true,
@@ -172,8 +227,9 @@ export async function postTelegramCardReply(input: {
 	try {
 		const payload = await callWithMarkdownFallback({
 			botToken: input.botToken,
-			method: "sendMessage",
+			method: input.request.document ? "sendDocument" : "sendMessage",
 			buildBody: (plain) => buildCardReplyBody(input.request, { plain }),
+			document: input.request.document,
 			fetchImpl: input.fetchImpl,
 		});
 		if (!payload.ok || typeof payload.result?.message_id !== "number") {
@@ -222,23 +278,33 @@ export async function editTelegramCardMessage(input: {
 		return false;
 	}
 	try {
-		const payload = await callWithMarkdownFallback({
-			botToken: input.botToken,
-			method: "editMessageText",
-			buildBody: (plain) => ({
-				chat_id: ref.chatId,
-				message_id: Number(ref.messageId),
-				...renderText(input.text, plain),
-				...(input.buttons && input.buttons.length > 0
-					? {
-							reply_markup: {
-								inline_keyboard: buildInlineKeyboard(input.buttons),
-							},
-						}
-					: {}),
-			}),
-			fetchImpl: input.fetchImpl,
-		});
+		const edit = (caption: boolean) =>
+			callWithMarkdownFallback({
+				botToken: input.botToken,
+				method: caption ? "editMessageCaption" : "editMessageText",
+				buildBody: (plain) => ({
+					chat_id: ref.chatId,
+					message_id: Number(ref.messageId),
+					...asCaptionWhen(caption, renderText(input.text, plain)),
+					...(input.buttons && input.buttons.length > 0
+						? {
+								reply_markup: {
+									inline_keyboard: buildInlineKeyboard(input.buttons),
+								},
+							}
+						: {}),
+				}),
+				fetchImpl: input.fetchImpl,
+			});
+		const payload = await edit(false);
+		// A notice sent with its file is that file's caption. Telegram says so rather than the
+		// connector remembering which messages carry one -- which a restart would forget.
+		if (
+			!payload.ok &&
+			/no text in the message to edit/i.test(payload.description ?? "")
+		) {
+			return (await edit(true)).ok === true;
+		}
 		return payload.ok === true;
 	} catch {
 		return false;

@@ -157,6 +157,15 @@ describe("splitLongCardNotice", () => {
 		expect(notice.text.endsWith("Posso fazer o merge?")).toBe(true);
 	});
 
+	it("also gives the notice as a caption for its file, when the two go out as one message", () => {
+		const notice = splitLongCardNotice(LONG, NOW);
+		expect(notice.caption?.length).toBeLessThanOrEqual(900);
+		expect(notice.caption?.startsWith("(texto completo no arquivo)\n")).toBe(
+			true,
+		);
+		expect(notice.caption?.endsWith("Posso fazer o merge?")).toBe(true);
+	});
+
 	it("leaves a notice that fits as it is", () => {
 		expect(splitLongCardNotice("Pronto para revisão", NOW)).toEqual({
 			text: "Pronto para revisão",

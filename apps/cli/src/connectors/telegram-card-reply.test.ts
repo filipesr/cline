@@ -351,3 +351,83 @@ describe("editTelegramCardMessage", () => {
 		).resolves.toBe(false);
 	});
 });
+
+describe("a long card notice, sent with its file", () => {
+	// Reported from use: a long question arrived as two messages -- the file, then the question
+	// with its buttons. One message carries both: the file, with the question as its caption.
+	it("posts the file and the notice as one message", async () => {
+		const fetchImpl = vi.fn(async () => ({
+			json: async () => ({ ok: true, result: { message_id: 402 } }),
+		})) as unknown as typeof fetch;
+
+		const result = await postTelegramCardReply({
+			botToken: "token",
+			fetchImpl,
+			request: {
+				chatId: "-1004378402573",
+				messageThreadId: "49",
+				replyToMessageId: "358",
+				text: "(texto completo no arquivo)\n\nGravar?",
+				buttons: [{ label: "Gravar", actionId: "kbq:52cf6:1" }],
+				document: { data: "# Relatório\n\nGravar?", filename: "relatorio.md" },
+			},
+		});
+
+		expect(result).toEqual({ messageId: "-1004378402573:402" });
+		expect(vi.mocked(fetchImpl)).toHaveBeenCalledTimes(1);
+		const [url, init] = vi.mocked(fetchImpl).mock.calls[0] as [
+			string,
+			RequestInit,
+		];
+		expect(url).toBe("https://api.telegram.org/bottoken/sendDocument");
+		const form = init.body as FormData;
+		expect(form.get("chat_id")).toBe("-1004378402573");
+		expect(form.get("message_thread_id")).toBe("49");
+		expect(form.get("caption")).toContain("Gravar?");
+		expect(form.get("parse_mode")).toBe("MarkdownV2");
+		expect(JSON.parse(String(form.get("reply_parameters")))).toEqual({
+			message_id: 358,
+			allow_sending_without_reply: true,
+		});
+		expect(JSON.parse(String(form.get("reply_markup")))).toEqual({
+			inline_keyboard: [[{ text: "Gravar", callback_data: "kbq:52cf6:1" }]],
+		});
+		const file = form.get("document") as File;
+		expect(file.name).toBe("relatorio.md");
+		expect(await file.text()).toBe("# Relatório\n\nGravar?");
+	});
+
+	// Answering edits the question, and a message carrying a file has a caption, not a text.
+	it("edits the caption of a message that carries a file", async () => {
+		const fetchImpl = vi
+			.fn()
+			.mockResolvedValueOnce({
+				json: async () => ({
+					ok: false,
+					description: "Bad Request: there is no text in the message to edit",
+				}),
+			})
+			.mockResolvedValueOnce({
+				json: async () => ({ ok: true }),
+			}) as unknown as typeof fetch;
+
+		const edited = await editTelegramCardMessage({
+			botToken: "token",
+			messageRef: "-100:402",
+			text: "Gravar?\n\n✅ Descartar",
+			fetchImpl,
+		});
+
+		expect(edited).toBe(true);
+		const [url, init] = vi.mocked(fetchImpl).mock.calls[1] as [
+			string,
+			RequestInit,
+		];
+		expect(url).toBe("https://api.telegram.org/bottoken/editMessageCaption");
+		const body = JSON.parse(String(init.body));
+		expect(body).toMatchObject({ chat_id: "-100", message_id: 402 });
+		expect(body.caption).toContain("Descartar");
+		expect(body).not.toHaveProperty("text");
+		expect(body).not.toHaveProperty("reply_markup");
+	});
+});
