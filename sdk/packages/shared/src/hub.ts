@@ -1050,6 +1050,16 @@ export interface HubUINotifyPayload {
 	updateOnly?: boolean;
 	/** What can be done about the item, offered only when it is not waiting on an answer. */
 	actions?: HubUINotifyAction[];
+	/**
+	 * The question the item was waiting on has been answered -- possibly somewhere this
+	 * subscriber never saw, such as the agent's own terminal. A subscriber that offered choices
+	 * for it should stop offering them. `answer` is what was chosen, when the publisher knows.
+	 */
+	answered?: HubUINotifyAnswered;
+}
+
+export interface HubUINotifyAnswered {
+	answer?: string;
 }
 
 export interface HubUIShowWindowPayload {

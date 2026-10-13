@@ -12,7 +12,7 @@ import type {
 	HubUINotifyAction,
 	TelegramConnectorState,
 } from "@cline/shared";
-import { Chat, ConsoleLogger, type SentMessage, type Thread } from "chat";
+import { Chat, ConsoleLogger, type Thread } from "chat";
 import type { Command } from "commander";
 import type { CliLoggerAdapter } from "../../logging/adapter";
 import { createCliLoggerAdapter } from "../../logging/adapter";
@@ -33,6 +33,7 @@ import {
 	runClosingAction,
 } from "../card-closing-actions";
 import {
+	ANSWERED_ELSEWHERE,
 	buildAnsweredQuestionText,
 	buildQuestionButtons,
 	buildQuestionCard,
@@ -51,7 +52,10 @@ import {
 import { dispatchConnectorHook } from "../hooks";
 import {
 	answerKanbanCard,
+	findCardAnchor,
+	findOpenQuestions,
 	findRememberedCard,
+	markRememberedAnswered,
 	rememberCardMessage,
 	type TrackedCardMessage,
 } from "../kanban-card-reply";
@@ -977,9 +981,10 @@ class TelegramConnector extends ConnectorBase<
 		let notifySubscription:
 			| Awaited<ReturnType<typeof startUiNotifyDelivery>>
 			| undefined;
-		// Lives only as long as the connector: after a restart the first update posts a new
-		// message, which is the honest outcome -- the old one is no longer ours to touch.
-		const notifyMessages = new Map<string, SentMessage>();
+		// Each card's anchor, by message id. Mirrored on disk as the card's `anchor` entry, which
+		// is what a restart falls back to: posting a new headline instead made a card resumed
+		// by a reply read, to the person, as a new demand.
+		const notifyMessages = new Map<string, string>();
 		// Closing taps still running, by message id: a second tap on a slow push is dropped.
 		const closingInFlight = new Set<string>();
 		// Questions awaiting a tap, by the id of the message carrying them. In memory only: a
@@ -1001,6 +1006,7 @@ class TelegramConnector extends ConnectorBase<
 		 * progress or an announcement, and its remembered text may already be stale.
 		 */
 		const markCardAnswered = async (
+			threadKey: string,
 			messageId: string,
 			card: TrackedCardMessage,
 			shown: string,
@@ -1025,10 +1031,46 @@ class TelegramConnector extends ConnectorBase<
 						});
 				if (edited) {
 					questionMessages.delete(messageId);
+					// On disk, so the card's own report of the answer -- which follows a tap here
+					// too -- finds nothing left to close, even after a restart.
+					const bindings = readBindings<TelegramThreadState>(bindingsPath);
+					const binding = bindings[threadKey];
+					if (binding) {
+						binding.cardMessages = markRememberedAnswered(
+							binding.cardMessages,
+							messageId,
+						);
+						writeBindings(bindingsPath, bindings);
+					}
 				}
 			} catch {
 				// An edit can be refused on a message too old to touch. The question then keeps
 				// its buttons; answering again is refused by the card.
+			}
+		};
+		/**
+		 * The card says its question was answered -- at its own terminal, on the board, or here.
+		 * Whatever it still offers in this chat stops offering it, and shows what was chosen.
+		 * Reported from use: answered at the terminal, the question here kept live buttons and no
+		 * sign it was settled.
+		 */
+		const closeAnsweredQuestions = async (
+			threadKey: string,
+			taskId: string,
+			answer: string | undefined,
+		): Promise<void> => {
+			const open = findOpenQuestions(
+				readBindings<TelegramThreadState>(bindingsPath)[threadKey]
+					?.cardMessages,
+				taskId,
+			);
+			for (const question of open) {
+				await markCardAnswered(
+					threadKey,
+					question.messageId,
+					question,
+					answer ?? ANSWERED_ELSEWHERE,
+				);
 			}
 		};
 		/**
@@ -1049,6 +1091,7 @@ class TelegramConnector extends ConnectorBase<
 				options?: string[];
 				actions?: HubUINotifyAction[];
 				text?: string;
+				anchor?: boolean;
 			},
 		): void => {
 			const bindings = readBindings<TelegramThreadState>(bindingsPath);
@@ -1092,8 +1135,16 @@ class TelegramConnector extends ConnectorBase<
 					// still arrives on its own.
 					const messageKey = resolveNotifyMessageKey(threadKey, options.itemId);
 					const previous = messageKey
-						? notifyMessages.get(messageKey)
+						? (notifyMessages.get(messageKey) ??
+							findCardAnchor(bindings[threadKey]?.cardMessages, options.itemId))
 						: undefined;
+					if (options.answered && options.itemId) {
+						await closeAnsweredQuestions(
+							threadKey,
+							options.itemId,
+							options.answered.answer,
+						);
+					}
 					// A card dragged across the board has something to update and nothing to
 					// announce: someone watching it already has it on screen, and someone who
 					// never asked about that card should not be handed a message because a
@@ -1115,16 +1166,19 @@ class TelegramConnector extends ConnectorBase<
 							: (clipStatusDetail(text) ?? text);
 					if (options.supersedesPrevious && previous) {
 						try {
-							const edited = await previous.edit({ raw: anchorText });
-							notifyMessages.set(messageKey as string, edited);
+							await telegram.editMessage(thread.id, previous, {
+								raw: anchorText,
+							});
+							notifyMessages.set(messageKey as string, previous);
 							if (options.itemId && options.workspacePath) {
-								// An edit keeps the message id, but re-registering costs nothing
-								// and survives a transport that does not.
+								// Re-registering moves the anchor to the front of the bounded
+								// memory, so a long-running card does not lose it to its replies.
 								rememberCardFor(threadKey, {
-									messageId: edited.id,
+									messageId: previous,
 									taskId: options.itemId,
 									projectPath: options.workspacePath,
 									options: parseNotifiedOptions(text),
+									anchor: true,
 								});
 							}
 							loggerAdapter.core.log("Telegram notification updated", {
@@ -1199,7 +1253,7 @@ class TelegramConnector extends ConnectorBase<
 					// to the Bot API is as answerable as one the library posted.
 					const anchorRef =
 						!options.supersedesPrevious && previous && options.itemId
-							? splitTelegramMessageId(previous.id)
+							? splitTelegramMessageId(previous)
 							: undefined;
 					if (anchorRef && options.itemId) {
 						const taskId = options.itemId;
@@ -1253,8 +1307,11 @@ class TelegramConnector extends ConnectorBase<
 						? thread.post({ card, fallbackText: bodyText })
 						: // Markdown, as the agent wrote it: the adapter renders it for Telegram.
 							thread.post({ markdown: bodyText }));
-					if (messageKey && shouldTrackForSuperseding(options)) {
-						notifyMessages.set(messageKey, sent);
+					const isAnchor = Boolean(
+						messageKey && shouldTrackForSuperseding(options),
+					);
+					if (isAnchor) {
+						notifyMessages.set(messageKey as string, sent.id);
 					}
 					// Kept so the question can be rewritten once it is answered: editing it is
 					// what clears the keyboard, and a live button on an answered question can
@@ -1284,6 +1341,7 @@ class TelegramConnector extends ConnectorBase<
 							options: notifiedOptions,
 							actions: closingActions,
 							text: bodyText,
+							anchor: isAnchor,
 						});
 					}
 					loggerAdapter.core.log("Telegram notification delivered", {
@@ -1524,6 +1582,7 @@ class TelegramConnector extends ConnectorBase<
 				// buttons, and the reply gets a 👍. Reported from use: a separate "Passed to card"
 				// line said nothing the question could not show itself.
 				await markCardAnswered(
+					threadKey,
 					message.replyTo.id,
 					card,
 					resolveShownAnswer(answer.text, message.text, card.options ?? []),
@@ -1635,7 +1694,7 @@ class TelegramConnector extends ConnectorBase<
 				// edited -- which is what removes the keyboard. Reported from use: "I can click
 				// several times because the button stays active and there is no indication it
 				// was answered."
-				await markCardAnswered(event.messageId, card, chosen);
+				await markCardAnswered(threadKey, event.messageId, card, chosen);
 				// No separate line for the choice: the question now shows it, and a second
 				// message saying the same thing is the noise this set out to remove.
 			} else {

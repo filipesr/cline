@@ -103,6 +103,12 @@ export function buildAnsweredQuestionText(
 }
 
 /**
+ * What an answered question shows when the card did not say what was chosen -- a permission
+ * prompt approved at the terminal says only that it was settled.
+ */
+export const ANSWERED_ELSEWHERE = "answered on the board";
+
+/**
  * A typed answer can be a paragraph, and the question it is written into still has to fit
  * Telegram's message limit to be edited at all. The full text is the person's own message,
  * right below, so the question only needs enough to say what it was answered with.

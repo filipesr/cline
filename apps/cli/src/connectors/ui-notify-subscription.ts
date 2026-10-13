@@ -1,5 +1,9 @@
 import { HubUIClient } from "@cline/core";
-import type { HubUINotifyAction, HubUINotifyPayload } from "@cline/shared";
+import type {
+	HubUINotifyAction,
+	HubUINotifyAnswered,
+	HubUINotifyPayload,
+} from "@cline/shared";
 
 import type { ConnectorThreadState } from "./thread-bindings";
 import {
@@ -71,6 +75,8 @@ export interface NotifyDeliveryOptions {
 	body?: string;
 	/** What can be done to close the item from here, when it is not waiting on an answer. */
 	actions?: HubUINotifyAction[];
+	/** The question the item was waiting on is settled, wherever it was answered. */
+	answered?: HubUINotifyAnswered;
 }
 
 export interface UiNotifySubscription {
@@ -106,6 +112,15 @@ function readActions(value: unknown): HubUINotifyAction[] | undefined {
 	return actions.length > 0 ? actions : undefined;
 }
 
+function readAnswered(value: unknown): HubUINotifyAnswered | undefined {
+	if (!value || typeof value !== "object" || Array.isArray(value)) {
+		return undefined;
+	}
+	const { answer } = value as Record<string, unknown>;
+	const text = typeof answer === "string" ? answer.trim() : "";
+	return text ? { answer: text } : {};
+}
+
 function readNotification(payload: unknown):
 	| {
 			text: string;
@@ -117,6 +132,7 @@ function readNotification(payload: unknown):
 			column?: string;
 			updateOnly: boolean;
 			actions?: HubUINotifyAction[];
+			answered?: HubUINotifyAnswered;
 	  }
 	| undefined {
 	if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
@@ -143,6 +159,7 @@ function readNotification(payload: unknown):
 		column: typeof record.column === "string" ? record.column : undefined,
 		updateOnly: record.updateOnly === true,
 		actions: readActions(record.actions),
+		answered: readAnswered(record.answered),
 	};
 }
 
@@ -194,6 +211,7 @@ export async function startUiNotifyDelivery<
 								title: notification.title,
 								body: notification.body,
 								actions: notification.actions,
+								answered: notification.answered,
 							})
 							.catch((error) => {
 								input.onError?.(error);

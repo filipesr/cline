@@ -188,6 +188,39 @@ describe("UiNotifyClient", () => {
 		expect(deliver.mock.calls[0]?.[2].actions).toBeUndefined();
 	});
 
+	it("carries that a question was answered, with the answer when there is one", async () => {
+		// Answered at the card's terminal, the question on the phone still offered its buttons.
+		const fake = fakeClient();
+		const deliver = vi.fn<
+			(
+				threadKey: string,
+				text: string,
+				options: NotifyDeliveryOptions,
+			) => Promise<void>
+		>(async () => undefined);
+		const subscription = await startUiNotifyDelivery({
+			createClient: () => fake.client,
+			readBindings: () => ({ t1: { state: { cwd: "/repo" } } }),
+			deliver,
+		});
+
+		const base = {
+			title: "Card",
+			body: "kanban · Running",
+			source: { workspacePath: "/repo", itemId: "20a5e" },
+		};
+		fake.emit({ ...base, answered: { answer: " Descartar " } });
+		fake.emit({ ...base, answered: {} });
+		fake.emit(base);
+		await subscription.flush();
+
+		expect(deliver.mock.calls.map((call) => call[2].answered)).toEqual([
+			{ answer: "Descartar" },
+			{},
+			undefined,
+		]);
+	});
+
 	it("is satisfied by the real HubUIClient", () => {
 		// The first version of this module declared a `subscribe` method that HubUIClient does
 		// not have, and a cast hid it: every unit test passed against a fake with the invented

@@ -36,6 +36,14 @@ export interface TrackedCardMessage {
 	 * confirmation asked -- after a restart has lost the copy kept in memory.
 	 */
 	text?: string;
+	/**
+	 * The card's own message -- the headline edited for its whole life, which everything else
+	 * replies to. Kept so a restart edits it instead of posting a second one: a fresh headline
+	 * reads, to the person, as a new card starting.
+	 */
+	anchor?: boolean;
+	/** The question here has been answered, from this chat or anywhere else, so it is closed. */
+	answered?: boolean;
 }
 
 export interface RememberedCardMessage extends TrackedCardMessage {
@@ -73,6 +81,44 @@ export function findRememberedCard(
 		return undefined;
 	}
 	return (existing ?? []).find((item) => item.messageId === messageId);
+}
+
+/** The message a card keeps editing in this conversation, or nothing if none is remembered. */
+export function findCardAnchor(
+	existing: readonly RememberedCardMessage[] | undefined,
+	taskId: string | undefined,
+): string | undefined {
+	if (!taskId) {
+		return undefined;
+	}
+	return (existing ?? []).find((item) => item.anchor && item.taskId === taskId)
+		?.messageId;
+}
+
+/**
+ * The questions a card still offers choices for. A review notice's buttons are not a question --
+ * they close the card -- so they are left out.
+ */
+export function findOpenQuestions(
+	existing: readonly RememberedCardMessage[] | undefined,
+	taskId: string,
+): RememberedCardMessage[] {
+	return (existing ?? []).filter(
+		(item) =>
+			item.taskId === taskId &&
+			!item.answered &&
+			(item.options?.length ?? 0) > 0,
+	);
+}
+
+/** Records a question as answered, in place, so it is neither closed twice nor reordered. */
+export function markRememberedAnswered(
+	existing: readonly RememberedCardMessage[] | undefined,
+	messageId: string,
+): RememberedCardMessage[] {
+	return (existing ?? []).map((item) =>
+		item.messageId === messageId ? { ...item, answered: true } : item,
+	);
 }
 
 export interface CardReplyResult {

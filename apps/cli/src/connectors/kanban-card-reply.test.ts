@@ -3,7 +3,10 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	answerKanbanCard,
 	buildKanbanInputArgs,
+	findCardAnchor,
+	findOpenQuestions,
 	findRememberedCard,
+	markRememberedAnswered,
 	rememberCardMessage,
 	resolveCardForReply,
 	type TrackedCardMessage,
@@ -189,5 +192,63 @@ describe("remembering which message belongs to which card", () => {
 		expect(findRememberedCard([b, a], "m9")).toBeUndefined();
 		expect(findRememberedCard([b, a], undefined)).toBeUndefined();
 		expect(findRememberedCard(undefined, "m1")).toBeUndefined();
+	});
+});
+
+describe("finding a card's anchor after a restart", () => {
+	const anchor = {
+		messageId: "m1",
+		taskId: "20a5e",
+		projectPath: "/code/kanban",
+		anchor: true,
+	};
+	const question = {
+		messageId: "m2",
+		taskId: "20a5e",
+		projectPath: "/code/kanban",
+		options: ["Sim", "Não"],
+	};
+
+	it("finds the message the card keeps editing, not its replies", () => {
+		// Reported from use: a restart lost the anchor, so a card resumed by a reply posted a
+		// fresh headline and read as a new demand instead of the same card going on.
+		expect(findCardAnchor([question, anchor], "20a5e")).toBe("m1");
+	});
+
+	it("finds nothing for a card that never had one remembered", () => {
+		expect(findCardAnchor([question], "20a5e")).toBeUndefined();
+		expect(findCardAnchor([anchor], "05baa")).toBeUndefined();
+		expect(findCardAnchor(undefined, "20a5e")).toBeUndefined();
+		expect(findCardAnchor([anchor], undefined)).toBeUndefined();
+	});
+});
+
+describe("questions a card still has open", () => {
+	const question = {
+		messageId: "m2",
+		taskId: "20a5e",
+		projectPath: "/code/kanban",
+		options: ["Sim", "Não"],
+		text: "Gravar?",
+	};
+	const review = {
+		messageId: "m3",
+		taskId: "20a5e",
+		projectPath: "/code/kanban",
+		actions: [{ id: "done" as const, label: "Concluir" }],
+	};
+
+	it("finds the questions with choices still on offer, not the review notice", () => {
+		// A review notice is not a question: its buttons close the card, and an answer given
+		// at the terminal does not settle them.
+		expect(findOpenQuestions([review, question], "20a5e")).toEqual([question]);
+		expect(findOpenQuestions([question], "05baa")).toEqual([]);
+	});
+
+	it("forgets a question once it is answered, so it is not closed twice", () => {
+		const list = markRememberedAnswered([review, question], "m2");
+		expect(findOpenQuestions(list, "20a5e")).toEqual([]);
+		// Kept, in place: a reply to it still finds its card.
+		expect(list.map((item) => item.messageId)).toEqual(["m3", "m2"]);
 	});
 });
