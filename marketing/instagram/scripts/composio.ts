@@ -197,12 +197,25 @@ export function criarComposio(opcoes?: {
 		async conexoes(toolkits) {
 			const propriedades =
 				(await iniciar()).get("COMPOSIO_MANAGE_CONNECTIONS")?.properties ?? {};
-			// Só listar: sem `action: "list"` a mesma ferramenta abre uma conexão nova para o
-			// toolkit que não estiver ativo.
-			return meta("COMPOSIO_MANAGE_CONNECTIONS", {
-				toolkits,
-				...("action" in propriedades ? { action: "list" } : {}),
-			});
+			// Só listar: sem `action: "list"` a mesma ferramenta abre uma conexão nova (o padrão é
+			// "add"). Hoje a ação vai em cada toolkit ({ name, action }); antes ia uma só no topo.
+			const item = (propriedades.toolkits?.items as Esquema | undefined)
+				?.properties;
+			if (item && "action" in item) {
+				return meta("COMPOSIO_MANAGE_CONNECTIONS", {
+					toolkits: toolkits.map((name) => ({ name, action: "list" })),
+				});
+			}
+			if ("action" in propriedades) {
+				return meta("COMPOSIO_MANAGE_CONNECTIONS", {
+					toolkits,
+					action: "list",
+				});
+			}
+			throw new ErroComposio(
+				"COMPOSIO_MANAGE_CONNECTIONS",
+				'o esquema não tem "action"; sem ela a chamada abriria conexões novas em vez de listar',
+			);
 		},
 
 		async executar(slug, argumentos, conta) {

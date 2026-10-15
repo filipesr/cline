@@ -35,6 +35,7 @@ let chamadas: Chamada[] = [];
 let servidor: ReturnType<typeof Bun.serve>;
 let quotaUsage = 0;
 let conexoesAtivas = 2;
+let pedidosDeConexao: unknown[] = [];
 
 // Assíncrono de propósito: um spawnSync travaria o servidor falso, que roda neste processo.
 async function rodar(...args: string[]) {
@@ -165,7 +166,13 @@ beforeAll(() => {
 						},
 						{
 							name: "COMPOSIO_MANAGE_CONNECTIONS",
-							inputSchema: { properties: { toolkits: {}, action: {} } },
+							inputSchema: {
+								properties: {
+									toolkits: {
+										items: { properties: { name: {}, action: {} } },
+									},
+								},
+							},
 						},
 					],
 				});
@@ -173,9 +180,18 @@ beforeAll(() => {
 			const texto = (corpo: unknown) =>
 				sse({ content: [{ type: "text", text: JSON.stringify(corpo) }] });
 			if (rpc.params?.name === "COMPOSIO_MANAGE_CONNECTIONS") {
+				pedidosDeConexao.push(rpc.params.arguments);
+				const conta = (status: string) => ({
+					status,
+					accounts: [{ id: "ca_x", status }],
+				});
 				return texto({
 					successful: true,
 					data: {
+						results: {
+							instagram: conta(conexoesAtivas > 0 ? "active" : "initiated"),
+							facebook: conta(conexoesAtivas > 1 ? "active" : "initiated"),
+						},
 						summary: {
 							active_connections: conexoesAtivas,
 							initiated_connections: 2 - conexoesAtivas,
@@ -290,18 +306,30 @@ beforeEach(() => {
 	chamadas = [];
 	quotaUsage = 0;
 	conexoesAtivas = 2;
+	pedidosDeConexao = [];
 	rmSync(POSTS, { recursive: true, force: true });
 });
 
 setDefaultTimeout(30_000);
 
 describe("conexao", () => {
-	test("sem conexão ativa, diz o que falta em vez de falhar numa ação", async () => {
-		conexoesAtivas = 0;
+	test("só lista as conexões: action list em cada toolkit, nunca add", async () => {
+		await rodar("conexao", PROJETO);
+		expect(pedidosDeConexao).toEqual([
+			{
+				toolkits: [
+					{ name: "instagram", action: "list" },
+					{ name: "facebook", action: "list" },
+				],
+			},
+		]);
+	});
+
+	test("sem conexão ativa, diz qual falta em vez de falhar numa ação", async () => {
+		conexoesAtivas = 1;
 		const r = await rodar("conexao", PROJETO);
 		expect(r.codigo).toBe(1);
-		expect(r.erro).toContain("nenhuma conexão ativa no Composio");
-		expect(r.erro).toContain("2 iniciada(s) sem concluir a autorização");
+		expect(r.erro).toContain("sem conexão ativa no Composio para facebook;");
 		expect(chamadas).toEqual([]);
 	});
 });
