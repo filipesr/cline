@@ -247,9 +247,8 @@ O script usa o mesmo cliente do fluxo de publicação (`scripts/composio.ts`, MC
 
 | Campo | Uso |
 |---|---|
-| `instagram.contaComposio` | Conta conectada no Composio de onde vêm as métricas do Instagram. Enquanto for `null`, o Instagram do projeto é pulado sem erro: é o caso da Party Share hoje |
-| `instagram.igUserId` | Id numérico da conta no Instagram. Opcional: sem ele, o script usa a conta conectada |
-| `facebook.contaComposio` e `facebook.pageId` | Conta conectada e Página. Com os dois preenchidos, a Página entra na coleta |
+| `instagram.contaComposio`, `instagram.igUserId` | Preenchidos por `conexao --salvar`. Enquanto os dois forem `null`, o Instagram do projeto é pulado sem erro: é o caso da Party Share hoje |
+| `facebook.pageId` | Com ele, a Página entra na coleta. `facebook.contaComposio` escolhe a conexão quando há mais de uma; em `null`, vale a conta padrão do Composio, como na publicação |
 | `offset` | Fuso que define "um dia" (`-03:00`) |
 
 Um projeto sem `publicacao.json`, ou sem nenhuma conta preenchida nele, não é coletado. Um projeto nunca lê as contas de outro.

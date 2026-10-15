@@ -109,9 +109,12 @@ export type CollectOptions = {
 	/** Days checked for missing account day metrics, counting back from yesterday. */
 	lookbackDays?: number
 	demographicsEveryDays?: number
-	/** From the project's publicacao.json; a source without a connected account is skipped. */
-	instagram?: { account: string; igUserId?: string }
-	facebook?: { account: string; pageId: string }
+	/**
+	 * From the project's publicacao.json. `account` picks the Composio connection when there
+	 * are several; without it the default one is used, as in the publishing flow.
+	 */
+	instagram?: { account?: string; igUserId?: string }
+	facebook?: { account?: string; pageId: string }
 	log?: (line: string) => void
 }
 
@@ -121,12 +124,12 @@ export type CallCount = { total: number; failed: number; bySlug: Record<string, 
 
 /** Runs one action on a connected account; every call is counted, failed ones included. */
 export type Composio = {
-	execute(slug: string, account: string, args: Record<string, unknown>): Promise<unknown>
+	execute(slug: string, account: string | undefined, args: Record<string, unknown>): Promise<unknown>
 	readonly calls: CallCount
 }
 
 export function countingComposio(
-	run: (slug: string, account: string, args: Record<string, unknown>) => Promise<unknown>,
+	run: (slug: string, account: string | undefined, args: Record<string, unknown>) => Promise<unknown>,
 ): Composio {
 	const calls: CallCount = { total: 0, failed: 0, bySlug: {} }
 	return {
@@ -385,7 +388,7 @@ export async function collect(options: CollectOptions): Promise<{ file: DailyFil
 
 	const postInsights = async (
 		slug: string,
-		accountId: string,
+		accountId: string | undefined,
 		args: (metrics: string[]) => Record<string, unknown>,
 		metrics: string[],
 	): Promise<{ metrics: Metrics } | { unavailable: InsightsUnavailable }> => {
@@ -742,8 +745,12 @@ export function projectSources(projectsDir: string, project: string): {
 	const fb = config.facebook
 	return {
 		config,
-		instagram: ig?.contaComposio ? { account: ig.contaComposio, ...(ig.igUserId ? { igUserId: ig.igUserId } : {}) } : undefined,
-		facebook: fb?.contaComposio && fb.pageId ? { account: fb.contaComposio, pageId: fb.pageId } : undefined,
+		// Instagram counts as set up once conexao --salvar stored its account or user id; the Page, once it has an id.
+		instagram:
+			ig?.contaComposio || ig?.igUserId
+				? { ...(ig.contaComposio ? { account: ig.contaComposio } : {}), ...(ig.igUserId ? { igUserId: ig.igUserId } : {}) }
+				: undefined,
+		facebook: fb?.pageId ? { ...(fb.contaComposio ? { account: fb.contaComposio } : {}), pageId: fb.pageId } : undefined,
 	}
 }
 

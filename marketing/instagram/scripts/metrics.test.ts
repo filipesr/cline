@@ -16,7 +16,7 @@ function fakeMeta(options: { followers?: number; oldMediaError?: boolean } = {})
 		{ id: "m2", caption: "Reel", media_type: "VIDEO", media_product_type: "REELS", permalink: "https://instagram.com/reel/BBB/", timestamp: "2026-10-12T12:00:00+0000" },
 		{ id: "m-old", caption: "Antes da conversão", media_type: "IMAGE", permalink: "https://instagram.com/p/OLD/", timestamp: "2025-09-11T12:00:00+0000" },
 	]
-	const run = async (slug: string, _account: string, args: Record<string, unknown>): Promise<unknown> => {
+	const run = async (slug: string, _account: string | undefined, args: Record<string, unknown>): Promise<unknown> => {
 		calls.push({ slug, args })
 		switch (slug) {
 			case "INSTAGRAM_GET_USER_INFO":
@@ -193,18 +193,18 @@ describe("collect", () => {
 })
 
 describe("project sources", () => {
-	test("the accounts come from the project's publicacao.json, and an account still null is left out", () => {
+	test("the accounts come from the project's publicacao.json; a Page without contaComposio uses the default account", () => {
 		writeFileSync(
 			join(projectsDir, "partyshare", "publicacao.json"),
 			JSON.stringify({
 				offset: "-03:00",
 				instagram: { contaComposio: null, igUserId: null },
-				facebook: { espelhar: true, contaComposio: "facebook_cerago-policy", pageId: "1351629444696145" },
+				facebook: { espelhar: true, contaComposio: null, pageId: "1351629444696145" },
 			}),
 		)
 		const sources = projectSources(projectsDir, "partyshare")
 		expect(sources.instagram).toBeUndefined()
-		expect(sources.facebook).toEqual({ account: "facebook_cerago-policy", pageId: "1351629444696145" })
+		expect(sources.facebook).toEqual({ pageId: "1351629444696145" })
 		expect(projectSources(projectsDir, "other").config).toBeUndefined()
 	})
 
