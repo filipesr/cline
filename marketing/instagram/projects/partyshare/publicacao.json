@@ -1,0 +1,98 @@
+{
+	"fusoHorario": "America/Sao_Paulo",
+	"offset": "-03:00",
+	"limitePorDia": 3,
+	"instagram": {
+		"contaComposio": null,
+		"igUserId": null,
+		"usuario": null
+	},
+	"facebook": {
+		"espelhar": true,
+		"contaComposio": null,
+		"pageId": null,
+		"nome": null
+	},
+	"legenda": {
+		"maxPalavras": 120,
+		"maxEmojis": 2,
+		"maxCaracteres": 2200,
+		"hashtags": {
+			"min": 3,
+			"max": 5,
+			"obrigatorias": ["#partyshare"],
+			"permitidas": [
+				"#confraternizacao",
+				"#festadefimdeano",
+				"#endomarketing",
+				"#eventoscorporativos",
+				"#rh",
+				"#comunicacaointerna",
+				"#eventosdeempresa"
+			],
+			"proibidas": ["#AFestaQueVocêNãoViu", "#love", "#instagood", "#festa"]
+		},
+		"termosProibidos": [
+			"grátis",
+			"gratuito",
+			"teste gratuito",
+			"4K",
+			"RAW",
+			"nenhuma foto se perde",
+			"disruptivo",
+			"revolucionar",
+			"solução inovadora",
+			"estamos muito felizes em anunciar",
+			"qualquer wi-fi",
+			"R$",
+			"AFestaQueVocêNãoViu",
+			"Você só viu 10% da sua festa"
+		],
+		"ctas": [
+			"Solicitar proposta corporativa",
+			"Agendar 20 minutos",
+			"Vagas de piloto até 14/nov"
+		]
+	},
+	"legendaFacebook": {
+		"maxPalavras": 120,
+		"maxEmojis": 2,
+		"hashtags": {
+			"min": 1,
+			"max": 2,
+			"obrigatorias": ["#partyshare"],
+			"permitidas": [
+				"#confraternizacao",
+				"#festadefimdeano",
+				"#endomarketing",
+				"#eventoscorporativos",
+				"#rh",
+				"#comunicacaointerna",
+				"#eventosdeempresa"
+			],
+			"proibidas": ["#AFestaQueVocêNãoViu", "#love", "#instagood", "#festa"]
+		},
+		"termosProibidos": [
+			"grátis",
+			"gratuito",
+			"teste gratuito",
+			"4K",
+			"RAW",
+			"nenhuma foto se perde",
+			"disruptivo",
+			"revolucionar",
+			"solução inovadora",
+			"estamos muito felizes em anunciar",
+			"qualquer wi-fi",
+			"R$",
+			"AFestaQueVocêNãoViu",
+			"Você só viu 10% da sua festa"
+		],
+		"ctas": [
+			"Solicitar proposta corporativa",
+			"Agendar 20 minutos",
+			"Vagas de piloto até 14/nov"
+		],
+		"link": "https://www.partyshare.me/business?utm_source=facebook"
+	}
+}
