@@ -238,6 +238,13 @@ async function conexao(
 	console.log(
 		`Conexões: ${JSON.stringify(acharCampo(resumo, "summary") ?? resumo).slice(0, 600)}`,
 	);
+	// Sem conexão ativa, a primeira ação falha com um erro genérico do Composio; dizer o porquê.
+	if (acharCampo(resumo, "active_connections") === 0) {
+		const iniciadas = Number(acharCampo(resumo, "initiated_connections") ?? 0);
+		falhar(
+			`nenhuma conexão ativa no Composio para instagram/facebook${iniciadas ? ` (${iniciadas} iniciada(s) sem concluir a autorização)` : ""}; conclua em composio.dev → For You e rode de novo`,
+		);
+	}
 
 	const contaIg = config.instagram.contaComposio;
 	const info = await composio.executar(

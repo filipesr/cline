@@ -34,6 +34,7 @@ type Chamada = {
 let chamadas: Chamada[] = [];
 let servidor: ReturnType<typeof Bun.serve>;
 let quotaUsage = 0;
+let conexoesAtivas = 2;
 
 // Assíncrono de propósito: um spawnSync travaria o servidor falso, que roda neste processo.
 async function rodar(...args: string[]) {
@@ -174,7 +175,12 @@ beforeAll(() => {
 			if (rpc.params?.name === "COMPOSIO_MANAGE_CONNECTIONS") {
 				return texto({
 					successful: true,
-					data: { summary: { active_connections: 2 } },
+					data: {
+						summary: {
+							active_connections: conexoesAtivas,
+							initiated_connections: 2 - conexoesAtivas,
+						},
+					},
 				});
 			}
 			const [item] = rpc.params?.arguments?.tools as {
@@ -283,10 +289,22 @@ afterAll(() => {
 beforeEach(() => {
 	chamadas = [];
 	quotaUsage = 0;
+	conexoesAtivas = 2;
 	rmSync(POSTS, { recursive: true, force: true });
 });
 
 setDefaultTimeout(30_000);
+
+describe("conexao", () => {
+	test("sem conexão ativa, diz o que falta em vez de falhar numa ação", async () => {
+		conexoesAtivas = 0;
+		const r = await rodar("conexao", PROJETO);
+		expect(r.codigo).toBe(1);
+		expect(r.erro).toContain("nenhuma conexão ativa no Composio");
+		expect(r.erro).toContain("2 iniciada(s) sem concluir a autorização");
+		expect(chamadas).toEqual([]);
+	});
+});
 
 describe("fluxo de publicação", () => {
 	test("carrossel aprovado vai ao Instagram e à Página, e registra media id e permalink", async () => {
