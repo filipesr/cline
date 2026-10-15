@@ -32,6 +32,12 @@ import { basename, join, relative, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { acharCampo, type Composio, criarComposio } from "./composio";
 import {
+	type Contagem,
+	contarChamadas,
+	novaContagem,
+	registrarPublicacao,
+} from "./consumo";
+import {
 	analisarLegenda,
 	aplicarDecisao,
 	cabeNaJanela,
@@ -198,6 +204,32 @@ function registrar(pub: Publicacao, evento: string, detalhe?: string) {
 	pub.historico.push({ em: agora(), evento, ...(detalhe ? { detalhe } : {}) });
 }
 
+/**
+ * Todo cliente do Composio deste comando conta as suas chamadas numa contagem só. Na saída, até
+ * por `falhar`, o comando registra o total em projects/<projeto>/composio-chamadas.jsonl, que é
+ * de onde consumo.ts soma o fluxo de publicação.
+ */
+const chamadasComposio: Contagem = novaContagem();
+let registroDoComando:
+	| { pastaProjeto: string; comando: string; post?: string }
+	| undefined;
+
+function composioContado(): Composio {
+	return contarChamadas(criarComposio(), chamadasComposio);
+}
+
+process.on("exit", () => {
+	const meta = Object.keys(chamadasComposio.metaTools ?? {}).length;
+	if (!registroDoComando || (chamadasComposio.total === 0 && meta === 0))
+		return;
+	registrarPublicacao(registroDoComando.pastaProjeto, {
+		em: agora(),
+		comando: registroDoComando.comando,
+		...(registroDoComando.post ? { post: registroDoComando.post } : {}),
+		composioCalls: chamadasComposio,
+	});
+});
+
 function exigirEstado(pub: Publicacao, ...aceitos: Estado[]) {
 	if (!aceitos.includes(pub.estado)) {
 		falhar(
@@ -264,7 +296,7 @@ async function conexao(
 	opcoes: { salvar: boolean; pagina?: string },
 ) {
 	const config = lerConfig(projeto);
-	const composio = criarComposio();
+	const composio = composioContado();
 	const resumo = await composio.conexoes(["instagram", "facebook"]);
 	console.log(
 		`Conexões: ${JSON.stringify(acharCampo(resumo, "summary") ?? resumo).slice(0, 600)}`,
@@ -770,7 +802,7 @@ async function publicar(
 
 	// --so-facebook num post já publicado refaz só o espelho na Página.
 	if (opcoes.soFacebook && pub.estado === "publicado") {
-		await espelharNoFacebook(criarComposio(), config, pub);
+		await espelharNoFacebook(composioContado(), config, pub);
 		salvar();
 		return;
 	}
@@ -843,7 +875,7 @@ async function publicar(
 			falhar(
 				'o projeto não fixou a Página; rode "conexao --salvar --pagina "<nome>""',
 			);
-		await espelharNoFacebook(criarComposio(), config, pub, {
+		await espelharNoFacebook(composioContado(), config, pub, {
 			soPagina: { salvar },
 		});
 		pub.estado = "publicado";
@@ -859,7 +891,7 @@ async function publicar(
 
 	// 2. Conta e limite da Meta (content_publishing_limit).
 	// O cliente só nasce aqui: o que o projeto recusa não precisa da chave nem da rede.
-	const composio = criarComposio();
+	const composio = composioContado();
 	const contaIg = config.instagram.contaComposio;
 	const igUserId = config.instagram.igUserId;
 	if (!igUserId)
@@ -1044,7 +1076,7 @@ async function remover(projeto: string, pastaPost: string) {
 	const pub = publicacaoDe(post);
 	exigirEstado(pub, "publicado");
 	if (pub.facebook?.postId) {
-		await criarComposio().executar(
+		await composioContado().executar(
 			"FACEBOOK_DELETE_POST",
 			{ post_id: pub.facebook.postId },
 			config.facebook?.contaComposio,
@@ -1109,6 +1141,13 @@ if (!comando || !projeto) {
 }
 const exigir = (valor: string | undefined, nome: string) =>
 	valor ?? falhar(`falta ${nome}`);
+if (["conexao", "publicar", "remover"].includes(comando)) {
+	registroDoComando = {
+		pastaProjeto: pastaDoProjeto(projeto),
+		comando,
+		...(comando !== "conexao" && alvo ? { post: basename(resolve(alvo)) } : {}),
+	};
+}
 
 switch (comando) {
 	case "conexao":

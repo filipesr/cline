@@ -356,3 +356,94 @@ bun run cli schedule history <schedule-id> --limit 7
 ```
 
 O agente agendado precisa de um provedor de LLM configurado (`cline auth`). A chave do Composio vem de `~/.config/cline-marketing/instagram.env`.
+
+## Consumo do Composio
+
+A decisão do projeto: ficar no Composio enquanto o consumo couber no plano gratuito e construir o conector nativo da Meta se passar. `scripts/consumo.ts` soma as chamadas que cada job registrou, projeta o mês e avisa no Telegram quando a projeção passa de **70% do gratuito**.
+
+**Projeção hoje: ~140 chamadas/mês, 0,14% do gratuito** (só a Página, com o Instagram da Party Share ainda desconectado). Com o Instagram conectado, ~700/mês (0,7%); depois de um ano no ritmo do calendário, ~3.300/mês (3,3%). As contas estão em [Modelo da projeção](#modelo-da-projeção).
+
+### O plano e de quem é a cota
+
+| | Plano gratuito (Hobby), conferido em composio.dev/pricing em 15/10/2026 |
+|---|---|
+| Tool calls | 100 mil/mês. Cada execução de ação conta uma vez; as meta tools (busca, schemas, conexões) não são cobradas |
+| Trigger events | 50 mil/mês. **Não usamos nenhum**: os toolkits de Instagram e Facebook não têm triggers (ver `composio.md`) |
+| Excedente | US$ 0,0003 por chamada; o Pro custa US$ 29/mês em créditos |
+
+**A cota é nossa, não da Cline.** Os scripts chamam o MCP da área de consumidor com a nossa chave `ck_` (`composio.dev → For You`), não o proxy de conectores da Cline API: as contas da Party Share estão conectadas lá, e o proxy fala com o projeto Composio da Cline, que não as enxerga. O consumo aparece no painel da nossa conta no composio.dev. Se um dia a publicação passar pelo proxy da Cline (`CLINE_COMPOSIO_BETA`), as chamadas caem no projeto da Cline e esta conta deixa de valer: aí o número tem de vir do time da Cline API.
+
+### De onde vêm os números
+
+Cada job registra as chamadas que fez, falhas incluídas, porque o Composio cobra a execução mesmo quando a Meta recusa:
+
+| Fluxo | Onde o job registra |
+|---|---|
+| Métricas (`metrics.ts`) | `runs[].composioCalls` em `metrics/<projeto>/<AAAA-MM-DD>.json` |
+| Publicação (`publicacao.ts conexao`, `publicar`, `remover`) | uma linha por comando em `projects/<projeto>/composio-chamadas.jsonl`, gravada na saída, até quando o comando para no meio |
+
+As meta tools (`COMPOSIO_MANAGE_CONNECTIONS`, de `conexao`) ficam em `metaTools`, fora do total. As duas primeiras linhas do PartyShare foram reconstruídas do `historico` do post de teste de 15/10 (`reconstruido` no registro), que rodou antes de haver registro.
+
+```sh
+cd marketing/instagram
+bun run consumo              # mês até agora, projeção, por projeto e por ação
+bun run consumo -- --linha   # a linha do relatório semanal
+bun run consumo -- --aviso   # a mesma linha; sai com 2 quando passa do aviso
+bun run consumo -- --json
+```
+
+**Projeção:** o que foi registrado no mês (no fuso `-03:00`) mais a média diária dos últimos 7 dias vezes os dias que faltam. Com menos de 7 dias de histórico, a média é desde o primeiro registro, o que pesa para cima logo depois de um job novo começar. `COMPOSIO_GRATIS_CHAMADAS` e `CONSUMO_AVISO_PCT` trocam o limite e o aviso, se o plano mudar.
+
+### Linha no relatório semanal
+
+O relatório semanal inclui a saída de `bun run consumo -- --linha`, como está, por exemplo:
+
+```
+Composio out/2026: 3 chamadas até 15/10 (publicação 3 · métricas 0) · projeção 52 no mês = 0,1% do gratuito (100 mil) · triggers 0
+```
+
+Quem gera o relatório em TypeScript pode usar `projetar(lerRegistros(...))` e `linhaDeConsumo(...)`, exportados por `scripts/consumo.ts`.
+
+### Aviso no Telegram
+
+Um schedule do Cline roda o consumo toda segunda às 9h e entrega a resposta no chat do bot do Telegram (`--delivery-thread`). A entrega do schedule sempre manda a resposta final, então a mensagem chega toda semana: uma linha normal enquanto está abaixo de 70%, e uma que começa com `⚠️ Composio acima de 70% do gratuito` e lembra a decisão (conector nativo da Meta) quando passa.
+
+```sh
+cd "$(git rev-parse --show-toplevel)"   # o repositório principal, não o worktree de um card
+bun run cli schedule create "Instagram: consumo do Composio" \
+  --cron "0 9 * * 1" \
+  --workspace "$PWD" \
+  --cwd "$PWD/marketing/instagram" \
+  --mode yolo \
+  --timeout 300 \
+  --tags instagram,composio \
+  --delivery-adapter telegram \
+  --delivery-thread <deliveryThread> \
+  --prompt "Em marketing/instagram, rode exatamente: bun run consumo -- --aviso. Não edite nenhum arquivo nem rode outro comando. Responda só com a linha que o comando imprimir, sem mudar nada nela. Se o comando sair com código diferente de 0 e de 2, comece a resposta com FALHOU e diga o erro."
+```
+
+O `<deliveryThread>` sai de `/whereami` no chat do bot. O conector do Telegram (`cline connect telegram`) e o hub precisam estar rodando no horário. Para conferir: `bun run cli schedule list --tags composio` e `bun run cli schedule trigger <id>`.
+
+A conferência é semanal porque o consumo anda devagar (ver o modelo abaixo): entre 0,1% e 3% do gratuito por mês, os 70% não chegam de uma semana para outra.
+
+### Modelo da projeção
+
+Chamadas por ação, contadas no código:
+
+| Job | Chamadas |
+|---|---|
+| Publicar no Instagram (post ou carrossel) | 4: limite da Meta, container, publish, permalink |
+| Espelho na Página | 2: post e permalink |
+| `conexao` | 2 a 3 ações (+1 meta tool, grátis) |
+| Métricas, por dia | Instagram `N + 5` (+4 por semana com 100+ seguidores) e Página `M + 3`, com N e M os posts com menos de 2 anos |
+
+O calendário da Party Share tem 3 a 4 posts de feed por mês nesta fase. Stories e Reels não passam pelo Composio.
+
+| Cenário | Métricas/mês | Publicação/mês | Total/mês | % do gratuito |
+|---|---|---|---|---|
+| **Hoje**: só a Página (M ≈ 1), 3 posts | (1 + 3) × 31 ≈ 124 | 3 × 2 + `conexao` ≈ 10 | **~140** | **0,14%** |
+| Instagram conectado, ~10 posts antigos no IG, 3 posts/mês | (10 + 5,6 + 3 + 3) × 30 ≈ 650 | 3 × 6 ≈ 18 | ~700 | 0,7% |
+| Depois de 12 meses no ritmo do calendário (N ≈ M ≈ 50) | (55,6 + 53) × 30 ≈ 3.260 | ≈ 24 | ~3.300 | 3,3% |
+| Teto do projeto, 3 posts/dia, sustentado | +180 chamadas/dia a cada mês (90 posts no IG e 90 na Página) | ≈ 540 | 70% em ~13 meses | — |
+
+O que mais pesa é a métrica por post, que cresce com cada post publicado nos últimos 2 anos. No ritmo do calendário, o gratuito sobra. Os 70% só chegam com uns 1.150 posts no Instagram e outros tantos na Página dentro da janela de 2 anos, ou com o polling da fase 2: cada recurso consultado a cada 5 minutos custa ~8.600 chamadas/mês, então umas 8 consultas desse tipo, somadas ao resto, passam dos 70%.

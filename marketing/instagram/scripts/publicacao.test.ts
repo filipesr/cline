@@ -14,6 +14,7 @@ import {
 } from "bun:test";
 import {
 	cpSync,
+	existsSync,
 	mkdirSync,
 	readFileSync,
 	rmSync,
@@ -25,6 +26,16 @@ const RAIZ = resolve(import.meta.dir, "..");
 const PROJETO = `teste-fluxo-${process.pid}`;
 const PASTA_PROJETO = join(RAIZ, "projects", PROJETO);
 const POSTS = join(PASTA_PROJETO, "posts");
+const REGISTRO_COMPOSIO = join(PASTA_PROJETO, "composio-chamadas.jsonl");
+
+function lerRegistroComposio() {
+	return existsSync(REGISTRO_COMPOSIO)
+		? readFileSync(REGISTRO_COMPOSIO, "utf8")
+				.trim()
+				.split("\n")
+				.map((l) => JSON.parse(l))
+		: [];
+}
 
 type Chamada = {
 	slug: string;
@@ -330,6 +341,7 @@ beforeEach(() => {
 	paginaFalha = false;
 	pedidosDeConexao = [];
 	rmSync(POSTS, { recursive: true, force: true });
+	rmSync(REGISTRO_COMPOSIO, { force: true });
 });
 
 setDefaultTimeout(30_000);
@@ -630,6 +642,48 @@ describe("fluxo de publicação", () => {
 			{ slug: "FACEBOOK_DELETE_POST", argumentos: { post_id: "111_222" } },
 		]);
 		expect(lerPost("2026-10-22-remover").publicacao.estado).toBe("removido");
+	});
+});
+
+describe("registro das chamadas do Composio", () => {
+	test("cada comando que chama o Composio grava as suas chamadas, para o consumo somar", async () => {
+		const pasta = await criarAprovado("2026-10-22-consumo");
+		expect(lerRegistroComposio()).toEqual([]);
+		expect((await rodar("publicar", PROJETO, pasta)).codigo).toBe(0);
+		await rodar("conexao", PROJETO);
+		const [publicar, conexao] = lerRegistroComposio();
+		expect(publicar).toMatchObject({
+			comando: "publicar",
+			post: "2026-10-22-consumo",
+			composioCalls: {
+				total: 6,
+				failed: 0,
+				bySlug: {
+					INSTAGRAM_CREATE_CAROUSEL_CONTAINER: 1,
+					FACEBOOK_GET_POST: 1,
+				},
+			},
+		});
+		expect(conexao).toMatchObject({
+			comando: "conexao",
+			composioCalls: { metaTools: { COMPOSIO_MANAGE_CONNECTIONS: 1 } },
+		});
+		expect(conexao.composioCalls.total).toBe(chamadas.length - 6);
+	});
+
+	test("um comando que para no meio registra as chamadas que já fez", async () => {
+		quotaUsage = 100;
+		const pasta = await criarAprovado("2026-10-22-consumo-recusado");
+		expect((await rodar("publicar", PROJETO, pasta)).codigo).toBe(1);
+		expect(lerRegistroComposio()).toMatchObject([
+			{ comando: "publicar", composioCalls: { total: 1 } },
+		]);
+	});
+
+	test("o que não chama o Composio não grava nada", async () => {
+		const pasta = await criarAprovado("2026-10-22-consumo-sem");
+		await rodar("estado", PROJETO, pasta);
+		expect(existsSync(REGISTRO_COMPOSIO)).toBe(false);
 	});
 });
 

@@ -5,6 +5,7 @@
 	"scripts": {
 		"upload": "bun scripts/upload-image.ts",
 		"metrics": "bun scripts/metrics.ts",
-		"test": "bun test scripts"
+		"test": "bun test scripts",
+		"consumo": "bun scripts/consumo.ts"
 	}
 }
