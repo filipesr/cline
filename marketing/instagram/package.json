@@ -1,0 +1,8 @@
+{
+	"name": "@cline/marketing-instagram",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"upload": "bun scripts/upload-image.ts"
+	}
+}
