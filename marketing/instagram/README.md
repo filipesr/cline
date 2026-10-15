@@ -89,8 +89,8 @@ O passo a passo é escrito para o agente do card do Kanban, mas também pode ser
    2. lê o `content_publishing_limit` da conta (`INSTAGRAM_GET_IG_USER_CONTENT_PUBLISHING_LIMIT`) e recusa se `quota_usage` tiver chegado a `quota_total`;
    3. cria os containers:
       - **post:** `INSTAGRAM_POST_IG_USER_MEDIA` com `image_url` e `caption`;
-      - **carrossel:** um `INSTAGRAM_POST_IG_USER_MEDIA` com `is_carousel_item` por slide e depois o `INSTAGRAM_CREATE_CAROUSEL_CONTAINER` com `children` e a legenda;
-      - espera cada container chegar a `FINISHED` (`INSTAGRAM_GET_POST_STATUS`) e chama `INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH`;
+      - **carrossel:** um `INSTAGRAM_CREATE_CAROUSEL_CONTAINER` só, com os slides em `child_image_urls` e a legenda;
+      - depois chama `INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH`, que espera o container ficar pronto (`max_wait_seconds`). O `INSTAGRAM_GET_POST_STATUS` está deprecado;
    4. lê o permalink (`INSTAGRAM_GET_IG_MEDIA`) e grava `instagram.mediaId`, `permalink`, `publicadoEm` e os ids dos containers no `post.json`. Também compara a legenda publicada com a aprovada e avisa se diferirem;
    5. espelha na Página, se `facebook.espelhar` estiver ligado e a Página estiver fixada: `FACEBOOK_CREATE_PHOTO_POST` para post, `FACEBOOK_CREATE_MULTI_PHOTO_POST` para carrossel, e depois `FACEBOOK_GET_POST` para o `permalink_url`. Se a Página falhar, o Instagram continua publicado, e a nova tentativa é `publicar --so-facebook`.
 
@@ -115,23 +115,27 @@ EOF
 
 ### Composio (composio.dev)
 
-A conta Instagram Business/Creator e a Página do Facebook estão conectadas no projeto do Composio em composio.dev → **Connected Accounts**, toolkits `instagram` e `facebook`.
+A conta do Instagram e a Página do Facebook estão conectadas na **área de consumidor** do Composio, em composio.dev → **For You**. Ver `composio.md`.
 
-Os scripts falam direto com a API do Composio, `https://backend.composio.dev/api/v3.1`. O proxy de conectores da Cline API, usado pela extensão em `sdk/packages/core/src/extensions/composio/`, só existe dentro de uma sessão Cline logada, e a publicação precisa rodar de um script.
+Os scripts chamam essa área pelo MCP dela, `https://connect.composio.dev/mcp`. Cada ação roda por `COMPOSIO_MULTI_EXECUTE_TOOL`, uma de cada vez.
+
+As conexões não passam de um projeto do Composio para outro. O proxy de conectores da Cline API (`sdk/packages/core/src/extensions/composio/`) fala com o projeto da Cline, exige uma sessão Cline logada com `CLINE_COMPOSIO_BETA` e não enxerga estas contas.
 
 | Variável | Onde achar |
 |---|---|
-| `COMPOSIO_API_KEY` | composio.dev → **Settings → API Keys** do projeto onde as contas estão conectadas |
-| `COMPOSIO_BASE_URL` | Opcional. O padrão é `https://backend.composio.dev/api/v3.1` |
+| `COMPOSIO_CONSUMER_API_KEY` | composio.dev → **For You → Connect my agent**. É a chave `ck_…` |
+| `COMPOSIO_MCP_URL` | Opcional. O padrão é `https://connect.composio.dev/mcp` |
 
 Ponha os valores em `marketing/instagram/.env`, que está no `.gitignore`. Depois rode:
 
 ```sh
-bun scripts/publicacao.ts conexao partyshare            # confere: @, tipo de conta, Página ligada, limite da Meta
-bun scripts/publicacao.ts conexao partyshare --salvar   # fixa conta, ig_user_id e Página em projects/partyshare/publicacao.json
+bun scripts/publicacao.ts conexao partyshare                                 # confere: conexões, @, tipo de conta, limite da Meta, Páginas
+bun scripts/publicacao.ts conexao partyshare --salvar --pagina "Party Share" # fixa ig_user_id, @ e Página em projects/partyshare/publicacao.json
 ```
 
-Os ids que ficam no `publicacao.json` (`contaComposio`, `igUserId`, `pageId`) não são segredos. Eles são o que impede um projeto de publicar na conta de outro.
+A conta tem mais de uma Página (Party Share e il Burger). A do projeto é a já fixada, a ligada ao Instagram ou a que `--pagina` nomear. O script nunca escolhe por palpite.
+
+Quando houver mais de uma conta do mesmo toolkit, `contaComposio` escolhe a do projeto e vai no campo `account` da execução. Os ids que ficam no `publicacao.json` (`igUserId`, `pageId`, `contaComposio`) não são segredos. Eles são o que impede um projeto de publicar na conta de outro.
 
 ### Hospedagem das imagens (Cloudflare R2)
 
@@ -192,7 +196,7 @@ Um projeto novo começa com uma cópia do `publicacao.json` de outro projeto. As
 | Peça | Onde | Card |
 |---|---|---|
 | Motor de imagens (FLUX.2 klein via mflux) | `scripts/imagens.ts`, `scripts/imagens_pixels.py` | da0c0 |
-| Hospedagem pública (Cloudflare R2) | `scripts/upload-image.ts` e as variáveis `R2_*` | 88547 |
+| Hospedagem pública (Cloudflare R2) | `scripts/upload-image.ts` e as variáveis `R2_*` | 88547, já no main |
 | Foto na pergunta do card, no Telegram | `HubUINotifyPayload.images` e o adapter do Telegram, neste repo | — |
 | Foto na pergunta do card, no Kanban | Kanban, branch `feat/question-images`: tira as `![](…)` do `AskUserQuestion` e as manda no aviso | — |
 

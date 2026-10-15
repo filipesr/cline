@@ -2,7 +2,7 @@
 /**
  * Fluxo de publicação: de um item do calendário do projeto até o post no ar.
  *
- *   bun scripts/publicacao.ts conexao   <projeto> [--salvar]
+ *   bun scripts/publicacao.ts conexao   <projeto> [--salvar] [--pagina "<nome>"]
  *   bun scripts/publicacao.ts calendario <projeto> [--data AAAA-MM-DD]
  *   bun scripts/publicacao.ts rascunho  <projeto> <pedido.json>
  *   bun scripts/publicacao.ts legenda   <projeto> <pasta-do-post>
@@ -40,14 +40,13 @@ import {
 	lerDecisao,
 	proximoDiaLivre,
 	type RegrasLegenda,
+	semAcento,
 } from "./publicacao-regras";
 
 const RAIZ = resolve(import.meta.dir, "..");
 const IMAGENS = join(import.meta.dir, "imagens.ts");
 const UPLOAD = join(import.meta.dir, "upload-image.ts");
 const OPCOES_APROVACAO = ["Aprovar", "Pedir ajuste", "Descartar"] as const;
-// Containers de imagem ficam prontos em segundos; vídeo está fora desta fase.
-const ESPERA_CONTAINER_MS = 90_000;
 
 type Config = {
 	fusoHorario: string;
@@ -94,7 +93,6 @@ type Publicacao = {
 	agendadoPara?: string;
 	cota?: Record<string, unknown>;
 	instagram?: {
-		contaComposio: string;
 		igUserId: string;
 		containers: string[];
 		creationId: string;
@@ -222,113 +220,92 @@ function rodar(args: string[], opcoes?: { capturar?: boolean }) {
 // ---------------------------------------------------------------------------------------------
 // Conexão
 
-/** A conta conectada de um toolkit: a do projeto, ou a única ativa quando ele ainda não fixou. */
-async function contaDe(
-	composio: Composio,
-	toolkit: string,
-	fixada?: string | null,
+/**
+ * Confere o que o projeto vai usar: as conexões ativas no Composio, a conta do Instagram
+ * (@, tipo, ig_user_id), o limite da Meta e a Página. Há mais de uma Página na conta, então a
+ * do projeto é a já fixada, a ligada ao Instagram ou a que `--pagina` nomear; nunca um palpite.
+ */
+async function conexao(
+	projeto: string,
+	opcoes: { salvar: boolean; pagina?: string },
 ) {
-	const contas = (await composio.contas(toolkit)).filter(
-		(c) => c.status === "ACTIVE",
-	);
-	if (fixada) {
-		const conta = contas.find((c) => c.id === fixada);
-		if (!conta)
-			falhar(
-				`a conta ${toolkit} ${fixada} do projeto não está ACTIVE no Composio`,
-			);
-		return conta;
-	}
-	if (contas.length === 1) return contas[0];
-	if (contas.length === 0) return undefined;
-	falhar(
-		`há ${contas.length} contas ${toolkit} ativas (${contas.map((c) => c.id).join(", ")}); fixe a do projeto com "conexao --salvar"`,
-	);
-}
-
-async function conexao(projeto: string, salvar: boolean) {
 	const config = lerConfig(projeto);
 	const composio = criarComposio();
-	const ig = await contaDe(
-		composio,
-		"instagram",
-		config.instagram.contaComposio,
+	const resumo = await composio.conexoes(["instagram", "facebook"]);
+	console.log(
+		`Conexões: ${JSON.stringify(acharCampo(resumo, "summary") ?? resumo).slice(0, 600)}`,
 	);
-	if (!ig)
-		falhar(
-			"nenhuma conta Instagram ativa no Composio; conecte em composio.dev → Connected Accounts",
-		);
-	const info = await composio.executar("INSTAGRAM_GET_USER_INFO", ig.id, {
-		fields: "id,user_id,username,name,account_type,media_count,followers_count",
-	});
+
+	const contaIg = config.instagram.contaComposio;
+	const info = await composio.executar(
+		"INSTAGRAM_GET_USER_INFO",
+		{
+			ig_user_id: config.instagram.igUserId ?? "me",
+			fields:
+				"id,user_id,username,name,account_type,media_count,followers_count",
+		},
+		contaIg,
+	);
 	const igUserId = String(acharCampo(info, "id") ?? "");
 	const usuario = String(acharCampo(info, "username") ?? "");
 	const tipo = acharCampo(info, "account_type");
-	console.log(
-		`Instagram: @${usuario} · id ${igUserId} · tipo ${tipo ?? "?"} · conta Composio ${ig.id}`,
-	);
+	if (!igUserId)
+		falhar(
+			`INSTAGRAM_GET_USER_INFO não devolveu id: ${JSON.stringify(info).slice(0, 400)}`,
+		);
+	console.log(`Instagram: @${usuario} · id ${igUserId} · tipo ${tipo ?? "?"}`);
 	const limite = await composio.executar(
 		"INSTAGRAM_GET_IG_USER_CONTENT_PUBLISHING_LIMIT",
-		ig.id,
-		{
-			ig_user_id: igUserId,
-			fields: "quota_usage,config",
-		},
+		{ ig_user_id: igUserId, fields: "quota_usage,config" },
+		contaIg,
 	);
-	console.log(`Limite da Meta: ${JSON.stringify(limite)}`);
+	console.log(
+		`Limite da Meta: ${acharCampo(limite, "quota_usage") ?? "?"} de ${acharCampo(limite, "quota_total") ?? "?"} em 24h`,
+	);
 
-	let pagina: { id: string; nome: string } | undefined;
-	const fb = await contaDe(
-		composio,
-		"facebook",
+	const paginas = await composio.executar(
+		"FACEBOOK_LIST_MANAGED_PAGES",
+		{ fields: "id,name,tasks,instagram_business_account", limit: 50 },
 		config.facebook?.contaComposio,
 	);
-	if (fb) {
-		const paginas = await composio.executar(
-			"FACEBOOK_LIST_MANAGED_PAGES",
-			fb.id,
-			{
-				fields: "id,name,tasks,instagram_business_account",
-				limit: 50,
-			},
-		);
-		const lista = (acharCampo(paginas, "data") ?? paginas) as Record<
-			string,
-			unknown
-		>[];
-		const itens = Array.isArray(lista) ? lista : [];
-		for (const p of itens) {
-			const ligada = (
-				p.instagram_business_account as { id?: string } | undefined
-			)?.id;
-			console.log(
-				`Página: ${p.name} · id ${p.id}${ligada ? ` · ligada ao IG ${ligada}` : ""} · conta Composio ${fb.id}`,
-			);
-		}
-		const escolhida =
-			itens.find((p) => p.id === config.facebook?.pageId) ??
-			itens.find(
-				(p) =>
-					(p.instagram_business_account as { id?: string } | undefined)?.id ===
-					igUserId,
-			) ??
-			(itens.length === 1 ? itens[0] : undefined);
-		if (escolhida)
-			pagina = { id: String(escolhida.id), nome: String(escolhida.name ?? "") };
-	} else {
+	const lista = acharCampo(paginas, "data") ?? paginas;
+	const itens = (Array.isArray(lista) ? lista : []) as Record<
+		string,
+		unknown
+	>[];
+	const ligadaDe = (p: Record<string, unknown>) =>
+		(p.instagram_business_account as { id?: string } | undefined)?.id;
+	for (const p of itens) {
 		console.log(
-			"Facebook: nenhuma conta ativa no Composio; o post não será espelhado.",
+			`Página: ${p.name} · id ${p.id}${ligadaDe(p) ? ` · ligada ao IG ${ligadaDe(p)}` : ""}`,
 		);
 	}
+	const escolhida =
+		itens.find((p) => String(p.id) === config.facebook?.pageId) ??
+		itens.find((p) => ligadaDe(p) === igUserId) ??
+		(opcoes.pagina
+			? itens.find(
+					(p) =>
+						semAcento(String(p.name ?? "")) ===
+						semAcento(opcoes.pagina as string),
+				)
+			: undefined);
+	if (opcoes.pagina && !escolhida)
+		falhar(`nenhuma Página se chama "${opcoes.pagina}"`);
+	console.log(
+		escolhida
+			? `Página do projeto: ${escolhida.name} (${escolhida.id})`
+			: 'Página do projeto: nenhuma fixada; use --pagina "<nome>" com --salvar',
+	);
 
-	if (salvar) {
-		config.instagram = { contaComposio: ig.id, igUserId, usuario };
-		if (fb && pagina) {
+	if (opcoes.salvar) {
+		config.instagram = { ...config.instagram, igUserId, usuario };
+		if (escolhida) {
 			config.facebook = {
 				espelhar: config.facebook?.espelhar ?? true,
-				contaComposio: fb.id,
-				pageId: pagina.id,
-				nome: pagina.nome,
+				contaComposio: config.facebook?.contaComposio ?? null,
+				pageId: String(escolhida.id),
+				nome: String(escolhida.name ?? ""),
 			};
 		}
 		salvarConfig(projeto, config);
@@ -750,26 +727,6 @@ function cota(projeto: string, em?: string) {
 	console.log("Cabe.");
 }
 
-async function esperarContainer(composio: Composio, conta: string, id: string) {
-	const limite = Date.now() + ESPERA_CONTAINER_MS;
-	while (Date.now() < limite) {
-		const status = await composio.executar("INSTAGRAM_GET_POST_STATUS", conta, {
-			creation_id: id,
-		});
-		const codigo = String(acharCampo(status, "status_code") ?? "");
-		if (codigo === "FINISHED") return;
-		if (codigo === "ERROR" || codigo === "EXPIRED") {
-			throw new Error(
-				`container ${id} ${codigo}: ${JSON.stringify(status).slice(0, 400)}`,
-			);
-		}
-		await Bun.sleep(3000);
-	}
-	throw new Error(
-		`container ${id} não ficou pronto em ${ESPERA_CONTAINER_MS / 1000}s`,
-	);
-}
-
 async function publicar(
 	projeto: string,
 	pastaPost: string,
@@ -778,11 +735,10 @@ async function publicar(
 	const config = lerConfig(projeto);
 	const { pasta, post, salvar } = abrirPost(projeto, pastaPost);
 	const pub = publicacaoDe(post);
-	const composio = criarComposio();
 
 	if (opcoes.soFacebook) {
 		exigirEstado(pub, "publicado");
-		await espelharNoFacebook(composio, config, pub);
+		await espelharNoFacebook(criarComposio(), config, pub);
 		salvar();
 		return;
 	}
@@ -849,27 +805,25 @@ async function publicar(
 	}
 
 	// 2. Conta e limite da Meta (content_publishing_limit).
-	const contaIg =
-		config.instagram.contaComposio ??
-		(await contaDe(composio, "instagram"))?.id;
+	// O cliente só nasce aqui: o que o projeto recusa não precisa da chave nem da rede.
+	const composio = criarComposio();
+	const contaIg = config.instagram.contaComposio;
 	const igUserId = config.instagram.igUserId;
-	if (!contaIg || !igUserId)
+	if (!igUserId)
 		falhar('o projeto não fixou a conta do Instagram; rode "conexao --salvar"');
 	const limiteMeta = await composio.executar(
 		"INSTAGRAM_GET_IG_USER_CONTENT_PUBLISHING_LIMIT",
+		{ ig_user_id: igUserId, fields: "quota_usage,config" },
 		contaIg,
-		{
-			ig_user_id: igUserId,
-			fields: "quota_usage,config",
-		},
 	);
 	const uso = Number(acharCampo(limiteMeta, "quota_usage") ?? Number.NaN);
 	const total = Number(acharCampo(limiteMeta, "quota_total") ?? Number.NaN);
 	pub.cota.meta = { quota_usage: uso, quota_total: total };
-	if (Number.isNaN(uso))
+	if (Number.isNaN(uso)) {
 		falhar(
 			`não consegui ler o content_publishing_limit: ${JSON.stringify(limiteMeta).slice(0, 400)}`,
 		);
+	}
 	if (!Number.isNaN(total) && uso >= total) {
 		registrar(pub, "recusado", `limite da Meta ${uso}/${total}`);
 		salvar();
@@ -881,75 +835,63 @@ async function publicar(
 		`Teto do projeto ${janela.contagem}/${config.limitePorDia} · limite da Meta ${uso}/${Number.isNaN(total) ? "?" : total}`,
 	);
 
-	// 3. Containers e publicação. Um carrossel inteiro é uma publicação.
+	// 3. Container e publicação. O carrossel inteiro é um container só (os slides vão por
+	// child_image_urls) e uma publicação só. O publish espera o container ficar pronto.
 	const legendaIg = pub.legenda.texto;
-	const containers: string[] = [];
-	let creationId: string;
-	if (post.formato === "carrossel") {
-		for (const m of pub.midia) {
-			const filho = await composio.executar(
-				"INSTAGRAM_POST_IG_USER_MEDIA",
-				contaIg,
-				{
-					ig_user_id: igUserId,
-					image_url: m.url,
-					is_carousel_item: true,
-				},
-			);
-			const id = String(acharCampo(filho, "id") ?? "");
-			if (!id)
-				falhar(
-					`o container de ${m.arquivo} não voltou com id: ${JSON.stringify(filho).slice(0, 300)}`,
+	const container =
+		post.formato === "carrossel"
+			? await composio.executar(
+					"INSTAGRAM_CREATE_CAROUSEL_CONTAINER",
+					{
+						ig_user_id: igUserId,
+						child_image_urls: pub.midia.map((m) => m.url),
+						caption: legendaIg,
+					},
+					contaIg,
+				)
+			: await composio.executar(
+					"INSTAGRAM_POST_IG_USER_MEDIA",
+					{
+						ig_user_id: igUserId,
+						image_url: pub.midia[0].url,
+						caption: legendaIg,
+					},
+					contaIg,
 				);
-			await esperarContainer(composio, contaIg, id);
-			containers.push(id);
-		}
-		const carrossel = await composio.executar(
-			"INSTAGRAM_CREATE_CAROUSEL_CONTAINER",
-			contaIg,
-			{
-				ig_user_id: igUserId,
-				children: containers,
-				caption: legendaIg,
-			},
+	const creationId = String(acharCampo(container, "id") ?? "");
+	if (!creationId)
+		falhar(
+			`o container não voltou com id: ${JSON.stringify(container).slice(0, 400)}`,
 		);
-		creationId = String(acharCampo(carrossel, "id") ?? "");
-	} else {
-		const unico = await composio.executar(
-			"INSTAGRAM_POST_IG_USER_MEDIA",
-			contaIg,
-			{
-				ig_user_id: igUserId,
-				image_url: pub.midia[0].url,
-				caption: legendaIg,
-			},
-		);
-		creationId = String(acharCampo(unico, "id") ?? "");
-	}
-	if (!creationId) falhar("o container do post não voltou com id");
-	await esperarContainer(composio, contaIg, creationId);
-	pub.instagram = { contaComposio: contaIg, igUserId, containers, creationId };
+	const filhos = acharCampo(container, "children");
+	pub.instagram = {
+		igUserId,
+		creationId,
+		containers: Array.isArray(filhos)
+			? filhos.map((f) => String((f as { id?: string }).id ?? f))
+			: [],
+	};
 	registrar(pub, "container", creationId);
 	salvar();
 
 	const publicado = await composio.executar(
 		"INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH",
+		{ ig_user_id: igUserId, creation_id: creationId, max_wait_seconds: 120 },
 		contaIg,
-		{
-			ig_user_id: igUserId,
-			creation_id: creationId,
-			max_wait_seconds: 60,
-		},
 	);
 	const mediaId = String(acharCampo(publicado, "id") ?? "");
 	if (!mediaId)
 		falhar(
 			`publicado sem media id na resposta: ${JSON.stringify(publicado).slice(0, 400)}`,
 		);
-	const midia = await composio.executar("INSTAGRAM_GET_IG_MEDIA", contaIg, {
-		ig_media_id: mediaId,
-		fields: "id,permalink,timestamp,caption,media_type",
-	});
+	const midia = await composio.executar(
+		"INSTAGRAM_GET_IG_MEDIA",
+		{
+			ig_media_id: mediaId,
+			fields: "id,permalink,timestamp,caption,media_type",
+		},
+		contaIg,
+	);
 	pub.instagram.mediaId = mediaId;
 	pub.instagram.permalink = String(acharCampo(midia, "permalink") ?? "");
 	pub.instagram.publicadoEm = String(acharCampo(midia, "timestamp") ?? agora());
@@ -976,7 +918,7 @@ async function espelharNoFacebook(
 	pub: Publicacao,
 ) {
 	const fb = config.facebook;
-	if (!fb?.espelhar || !fb.pageId || !fb.contaComposio) return;
+	if (!fb?.espelhar || !fb.pageId) return;
 	if (pub.facebook?.postId) {
 		console.log(`Facebook já publicado: ${pub.facebook.postId}`);
 		return;
@@ -988,22 +930,18 @@ async function espelharNoFacebook(
 			urls.length > 1
 				? await composio.executar(
 						"FACEBOOK_CREATE_MULTI_PHOTO_POST",
+						{ page_id: fb.pageId, message: mensagem, photo_urls: urls },
 						fb.contaComposio,
-						{
-							page_id: fb.pageId,
-							message: mensagem,
-							photo_urls: urls,
-						},
 					)
 				: await composio.executar(
 						"FACEBOOK_CREATE_PHOTO_POST",
-						fb.contaComposio,
 						{
 							page_id: fb.pageId,
 							url: urls[0],
 							message: mensagem,
 							published: true,
 						},
+						fb.contaComposio,
 					);
 		const postId = String(
 			acharCampo(resposta, "post_id") ?? acharCampo(resposta, "id") ?? "",
@@ -1012,11 +950,8 @@ async function espelharNoFacebook(
 			throw new Error(`sem post id: ${JSON.stringify(resposta).slice(0, 300)}`);
 		const detalhes = await composio.executar(
 			"FACEBOOK_GET_POST",
+			{ post_id: postId, fields: "id,permalink_url,created_time" },
 			fb.contaComposio,
-			{
-				post_id: postId,
-				fields: "id,permalink_url,created_time",
-			},
 		);
 		pub.facebook = {
 			pageId: fb.pageId,
@@ -1046,13 +981,11 @@ async function remover(projeto: string, pastaPost: string) {
 	const { post, salvar } = abrirPost(projeto, pastaPost);
 	const pub = publicacaoDe(post);
 	exigirEstado(pub, "publicado");
-	if (pub.facebook?.postId && config.facebook?.contaComposio) {
+	if (pub.facebook?.postId) {
 		await criarComposio().executar(
 			"FACEBOOK_DELETE_POST",
-			config.facebook.contaComposio,
-			{
-				post_id: pub.facebook.postId,
-			},
+			{ post_id: pub.facebook.postId },
+			config.facebook?.contaComposio,
 		);
 		console.log(`Facebook: post ${pub.facebook.postId} apagado.`);
 	}
@@ -1089,6 +1022,7 @@ const { positionals, values } = parseArgs({
 	allowPositionals: true,
 	options: {
 		salvar: { type: "boolean", default: false },
+		pagina: { type: "string" },
 		data: { type: "string" },
 		comentario: { type: "string" },
 		pedido: { type: "string" },
@@ -1109,7 +1043,7 @@ const exigir = (valor: string | undefined, nome: string) =>
 
 switch (comando) {
 	case "conexao":
-		await conexao(projeto, values.salvar);
+		await conexao(projeto, { salvar: values.salvar, pagina: values.pagina });
 		break;
 	case "calendario": {
 		const ano = Number((values.data ?? new Date().toISOString()).slice(0, 4));

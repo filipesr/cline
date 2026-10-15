@@ -45,8 +45,8 @@ async function rodar(...args: string[]) {
 			stderr: "pipe",
 			env: {
 				...process.env,
-				COMPOSIO_API_KEY: "chave-de-teste",
-				COMPOSIO_BASE_URL: `http://localhost:${servidor.port}`,
+				COMPOSIO_CONSUMER_API_KEY: "ck_teste",
+				COMPOSIO_MCP_URL: `http://localhost:${servidor.port}/mcp`,
 			},
 		},
 	);
@@ -116,34 +116,90 @@ function criarPost(
 beforeAll(() => {
 	servidor = Bun.serve({
 		port: 0,
+		// Fala o MCP do Composio: initialize, tools/list e tools/call de
+		// COMPOSIO_MULTI_EXECUTE_TOOL. Responde em SSE, como o servidor real.
 		async fetch(req) {
-			const url = new URL(req.url);
-			if (req.headers.get("x-api-key") !== "chave-de-teste")
+			if (req.headers.get("x-consumer-api-key") !== "ck_teste") {
 				return new Response("no", { status: 401 });
-			if (url.pathname === "/connected_accounts") {
-				const toolkit = url.searchParams.get("toolkit_slugs");
-				return Response.json({
-					items: [
+			}
+			const rpc = (await req.json()) as {
+				id?: number;
+				method: string;
+				params?: { name?: string; arguments?: Record<string, unknown> };
+			};
+			const sse = (result: unknown) =>
+				new Response(
+					`event: message\ndata: ${JSON.stringify({ jsonrpc: "2.0", id: rpc.id, result })}\n\n`,
+					{
+						headers: {
+							"content-type": "text/event-stream",
+							"mcp-session-id": "sessao-1",
+						},
+					},
+				);
+			if (rpc.method === "notifications/initialized") {
+				return new Response(null, { status: 202 });
+			}
+			if (rpc.method === "initialize") {
+				return sse({ protocolVersion: "2025-06-18", capabilities: {} });
+			}
+			if (req.headers.get("mcp-session-id") !== "sessao-1") {
+				return new Response("sem sessão", { status: 400 });
+			}
+			if (rpc.method === "tools/list") {
+				return sse({
+					tools: [
 						{
-							id: `ca_${toolkit}`,
-							status: "ACTIVE",
-							toolkit: { slug: toolkit },
+							name: "COMPOSIO_MULTI_EXECUTE_TOOL",
+							inputSchema: {
+								properties: {
+									tools: {
+										items: {
+											properties: { tool_slug: {}, arguments: {}, account: {} },
+										},
+									},
+								},
+							},
+						},
+						{
+							name: "COMPOSIO_MANAGE_CONNECTIONS",
+							inputSchema: { properties: { toolkits: {}, action: {} } },
 						},
 					],
 				});
 			}
-			const slug = url.pathname.split("/").pop() ?? "";
-			const corpo = (await req.json()) as {
-				connected_account_id: string;
+			const texto = (corpo: unknown) =>
+				sse({ content: [{ type: "text", text: JSON.stringify(corpo) }] });
+			if (rpc.params?.name === "COMPOSIO_MANAGE_CONNECTIONS") {
+				return texto({
+					successful: true,
+					data: { summary: { active_connections: 2 } },
+				});
+			}
+			const [item] = rpc.params?.arguments?.tools as {
+				tool_slug: string;
 				arguments: Record<string, unknown>;
-			};
+				account?: string;
+			}[];
+			const slug = item.tool_slug;
 			chamadas.push({
 				slug,
-				conta: corpo.connected_account_id,
-				argumentos: corpo.arguments,
+				conta: item.account ?? "",
+				argumentos: item.arguments,
 			});
 			const ok = (data: unknown) =>
-				Response.json({ successful: true, data, error: null, log_id: "log_1" });
+				texto({
+					successful: true,
+					data: {
+						results: [
+							{
+								index: 0,
+								tool_slug: slug,
+								response: { successful: true, data },
+							},
+						],
+					},
+				});
 			switch (slug) {
 				case "INSTAGRAM_GET_IG_USER_CONTENT_PUBLISHING_LIMIT":
 					return ok({
@@ -155,11 +211,14 @@ beforeAll(() => {
 						],
 					});
 				case "INSTAGRAM_POST_IG_USER_MEDIA":
-					return ok({ id: `c${chamadas.length}` });
+					return ok({ id: "container1" });
 				case "INSTAGRAM_CREATE_CAROUSEL_CONTAINER":
-					return ok(JSON.stringify({ id: "carrossel1" }));
-				case "INSTAGRAM_GET_POST_STATUS":
-					return ok({ status_code: "FINISHED" });
+					return ok(
+						JSON.stringify({
+							id: "carrossel1",
+							children: [{ id: "c1" }, { id: "c2" }],
+						}),
+					);
 				case "INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH":
 					return ok({ id: "1790000000001" });
 				case "INSTAGRAM_GET_IG_MEDIA":
@@ -182,10 +241,13 @@ beforeAll(() => {
 				case "FACEBOOK_DELETE_POST":
 					return ok({ success: true });
 				default:
-					return Response.json({
-						successful: false,
-						data: {},
-						error: `slug inesperado ${slug}`,
+					return texto({
+						successful: true,
+						data: {
+							results: [
+								{ index: 0, tool_slug: slug, error: `slug inesperado ${slug}` },
+							],
+						},
 					});
 			}
 		},
@@ -232,33 +294,27 @@ describe("fluxo de publicação", () => {
 		expect(r.erro).toBe("");
 		expect(r.codigo).toBe(0);
 
-		const slugs = chamadas.map((c) => c.slug);
-		expect(slugs).toEqual([
+		expect(chamadas.map((c) => c.slug)).toEqual([
 			"INSTAGRAM_GET_IG_USER_CONTENT_PUBLISHING_LIMIT",
-			"INSTAGRAM_POST_IG_USER_MEDIA",
-			"INSTAGRAM_GET_POST_STATUS",
-			"INSTAGRAM_POST_IG_USER_MEDIA",
-			"INSTAGRAM_GET_POST_STATUS",
 			"INSTAGRAM_CREATE_CAROUSEL_CONTAINER",
-			"INSTAGRAM_GET_POST_STATUS",
 			"INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH",
 			"INSTAGRAM_GET_IG_MEDIA",
 			"FACEBOOK_CREATE_MULTI_PHOTO_POST",
 			"FACEBOOK_GET_POST",
 		]);
-		const filhos = chamadas.filter(
-			(c) => c.slug === "INSTAGRAM_POST_IG_USER_MEDIA",
-		);
-		expect(
-			filhos.every(
-				(c) => c.argumentos.is_carousel_item === true && !c.argumentos.caption,
-			),
-		).toBe(true);
 		const carrossel = chamadas.find(
 			(c) => c.slug === "INSTAGRAM_CREATE_CAROUSEL_CONTAINER",
 		);
-		expect(carrossel?.argumentos.children).toEqual(["c2", "c4"]);
+		expect(carrossel?.argumentos.child_image_urls).toEqual([
+			"https://pub.example.r2.dev/2026-10-22-e02-confraternizacao/final/01.jpg",
+			"https://pub.example.r2.dev/2026-10-22-e02-confraternizacao/final/02.jpg",
+		]);
 		expect(String(carrossel?.argumentos.caption)).toContain("#partyshare");
+		expect(carrossel?.conta).toBe("ca_instagram");
+		const publish = chamadas.find(
+			(c) => c.slug === "INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH",
+		);
+		expect(publish?.argumentos.creation_id).toBe("carrossel1");
 		const fb = chamadas.find(
 			(c) => c.slug === "FACEBOOK_CREATE_MULTI_PHOTO_POST",
 		);
@@ -269,7 +325,7 @@ describe("fluxo de publicação", () => {
 		expect(pub.estado).toBe("publicado");
 		expect(pub.instagram.mediaId).toBe("1790000000001");
 		expect(pub.instagram.permalink).toBe("https://www.instagram.com/p/TESTE/");
-		expect(pub.instagram.containers).toEqual(["c2", "c4"]);
+		expect(pub.instagram.containers).toEqual(["c1", "c2"]);
 		expect(pub.facebook).toMatchObject({
 			postId: "111_222",
 			permalink: "https://www.facebook.com/111/posts/222",
