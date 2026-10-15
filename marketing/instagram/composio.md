@@ -227,6 +227,8 @@ Conclusão para a fase 2: com o Composio, DMs e comentários automatizados só s
 
 ## Como medir o consumo
 
+Hoje: `bun run consumo` soma o que os jobs de publicação e métricas registram e projeta o mês; o aviso de 70% vai ao Telegram por um schedule. Ver README → "Consumo do Composio". O que segue é o levantamento de 15/10.
+
 ### Neste levantamento (área de consumidor, conta pessoal)
 
 - O Composio cobra por **chamada de ferramenta**. Pela página de preços em 15/10/2026, o plano gratuito (Hobby) inclui 100 mil chamadas/mês e 50 mil execuções de trigger/mês. Excedente: US$ 0,0003 por chamada. Pro: US$ 29/mês em créditos. Fontes de terceiros citam números diferentes (20 mil, 50 mil): confirmar no painel.

@@ -17,6 +17,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { join, resolve } from "node:path"
 import { parseArgs } from "node:util"
 import { criarComposio } from "./composio"
+import { lerRegistros, linhaDeConsumo, projetar, registrarPublicacao } from "./consumo"
 import {
 	addDays,
 	type CallCount,
@@ -84,6 +85,8 @@ export type ReportInput = {
 	comments?: Map<string, string[]>
 	/** Composio calls this report made to read comments. */
 	reportCalls?: CallCount
+	/** The month's projected Composio use, from consumo.ts (linhaDeConsumo). */
+	consumption?: string
 	sources: { instagram: boolean; facebook: boolean }
 	utcOffsetMinutes: number
 }
@@ -531,6 +534,7 @@ export function buildReport(input: ReportInput): { markdown: string; summary: st
 	// Composio consumption
 	const collectionCalls = daysOf(week).reduce((sum, date) => sum + (input.daily.get(date)?.runs ?? []).reduce((s, run) => s + run.composioCalls.total, 0), 0)
 	lines.push(`_Composio: ${collectionCalls} chamadas na coleta diária da semana e ${input.reportCalls?.total ?? 0} neste relatório._`)
+	if (input.consumption) lines.push(`_${input.consumption}_`)
 
 	const summary = `${input.project} ${week.label}: ${rows.length} posts · ${themes.reduce((s, t) => s + t.count, 0)} comments · ${input.reportCalls?.total ?? 0} Composio calls`
 	return { markdown: `${lines.join("\n")}\n`, summary }
@@ -644,7 +648,12 @@ if (import.meta.main) {
 				input.comments = result.comments
 				input.reportCalls = composio.calls
 				errors.push(...result.errors)
+				// Counted with the publishing flow's calls, so the month's consumption includes them.
+				if (composio.calls.total > 0) {
+					registrarPublicacao(join(projectsDir, project), { em: now.toISOString(), comando: `report ${week.label}`, composioCalls: composio.calls })
+				}
 			}
+			input.consumption = linhaDeConsumo(projetar(lerRegistros({ projetos: projectsDir, metricas: metricsDir }), { agora: now, offsetMin: offset }))
 			const { markdown, summary } = buildReport(input)
 			const out = join(reportsDir, project)
 			mkdirSync(out, { recursive: true })

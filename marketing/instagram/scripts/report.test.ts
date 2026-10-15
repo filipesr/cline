@@ -88,6 +88,7 @@ function exampleInput(overrides: Partial<ReportInput> = {}): ReportInput {
 			["facebook:fb2", ["Qual o valor do pacote?"]],
 		]),
 		reportCalls: { total: 3, failed: 0, bySlug: {} },
+		consumption: "Composio out/2026: 66 chamadas até 26/10",
 		sources: { instagram: true, facebook: true },
 		utcOffsetMinutes: -180,
 		...overrides,
@@ -168,6 +169,7 @@ describe("report", () => {
 		expect(markdown).toContain("- **Preço e orçamento** (3): “Quanto custa para 200 pessoas?”")
 		expect(markdown).not.toContain("ana.rh")
 		expect(markdown).toContain("_Composio: 63 chamadas na coleta diária da semana e 3 neste relatório._")
+		expect(markdown).toContain("_Composio out/2026: 66 chamadas até 26/10_")
 		const recs = markdown.split("## Para a semana que vem")[1].trim().split("\n").filter((l) => /^\d\. /.test(l))
 		expect(recs).toHaveLength(3)
 		expect(recs[0]).toStartWith("1. E09 (sex 23/out")
