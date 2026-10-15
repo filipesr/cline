@@ -239,7 +239,7 @@ function timeSeries(data: unknown, metric: string, offset: number): Record<strin
 	return series
 }
 
-function listOf(data: unknown, looksLikeItem: (i: Record<string, unknown>) => boolean): Record<string, unknown>[] {
+export function listOf(data: unknown, looksLikeItem: (i: Record<string, unknown>) => boolean): Record<string, unknown>[] {
 	const found = deepFind(data, (v) => Array.isArray(v) && v.length > 0 && v.every((i) => isRecord(i) && typeof i.id === "string" && looksLikeItem(i)))
 	return (found as Record<string, unknown>[] | undefined) ?? []
 }

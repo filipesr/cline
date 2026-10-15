@@ -356,3 +356,66 @@ bun run cli schedule history <schedule-id> --limit 7
 ```
 
 O agente agendado precisa de um provedor de LLM configurado (`cline auth`). A chave do Composio vem de `~/.config/cline-marketing/instagram.env`.
+
+## Relatório semanal
+
+`scripts/report.ts` cruza as métricas de `metrics/<projeto>/` com a campanha do projeto e grava `reports/<projeto>/<semana ISO>.md`, por exemplo `reports/partyshare/2026-W43.md`. O schedule semanal manda esse texto ao Telegram. Lá, uma mensagem longa vira um arquivo `.md` sozinha.
+
+```sh
+cd marketing/instagram
+bun run report                                  # semana anterior (seg–dom), todos os projetos com publicacao.json
+bun run report partyshare --semana 2026-W43     # uma semana escolhida
+bun run report partyshare --sem-comentarios     # sem chamar o Composio
+```
+
+O relatório sai no stdout, e a linha de resumo e os erros saem no stderr. Rodar de novo regrava o arquivo da semana.
+
+### O que entra
+
+| Seção | De onde vem |
+|---|---|
+| Alcance e seguidores | `account.day` e `page.day` da semana somados, com a variação contra a semana anterior. Seguidores vêm do perfil lido na manhã seguinte ao fim de cada semana. Engajamento = interações ÷ alcance |
+| Posts da semana | A última foto de cada post publicado na semana, com 🥇 e 🔻 dentro de cada rede. O pilar e o formato vêm do `post.json` do calendário (`calendar.post`), da linha do calendário com a mesma data e o mesmo pilar, ou do tipo de mídia. A tabela "Por pilar e formato" compara a média de cada combinação |
+| Fora do ar | Itens de feed do calendário da semana (tudo menos Story) sem post publicado |
+| Comentários | Lidos pelo Composio só para os posts da semana: `INSTAGRAM_GET_IG_MEDIA_COMMENTS` nos posts com comentários e `FACEBOOK_GET_COMMENTS` em cada post da Página, até 50 por post. São agrupados por tema com palavras-chave (preço, TI e segurança, como funciona, wi-fi, datas e vagas, elogio). O relatório traz a contagem e um exemplo curto, sem autor e com as @ apagadas; o texto dos comentários não é guardado |
+| Para a semana que vem | 3 recomendações, escolhidas por prioridade: Instagram desconectado; item do calendário que não saiu; objeção que se repete nos comentários (com o post da semana seguinte que pode respondê-la); formato, pilar ou horário que rendeu pelo menos 25% mais; queda de alcance de 20% ou mais; post mais salvo. Quando faltam dados, entram passos práticos: coleta que falhou e os próximos itens do calendário |
+| Composio | Chamadas da coleta diária da semana (somadas de `runs`) e as deste relatório |
+
+Com Instagram, a comparação usa o engajamento dos posts do Instagram. Só com a Página, usa o alcance, porque a Página não dá interações por post.
+
+### Agendamento semanal (schedules do Cline)
+
+O relatório roda segunda às 8h, uma hora depois da coleta das 7h, que traz o domingo. O resultado vai para o tópico do Telegram em que os cards já avisam, pelo bot que roda `cline connect telegram`. A delivery usa a resposta final do agente agendado, então o prompt pede o relatório tal como saiu.
+
+```sh
+cd "$(git rev-parse --show-toplevel)"
+cline schedule create "Instagram: relatório semanal" \
+  --address 127.0.0.1:25463 \
+  --cron "0 8 * * 1" \
+  --workspace "$PWD" \
+  --cwd "$PWD/marketing/instagram" \
+  --mode yolo \
+  --timeout 900 \
+  --provider claude-code --model claude-sonnet-5 \
+  --tags instagram,report \
+  --delivery-adapter telegram \
+  --delivery-bot fsrezende_cline_bot \
+  --delivery-thread "telegram:-1004378402573:49" \
+  --prompt "Em marketing/instagram, rode exatamente: bun run report. Não edite nenhum arquivo nem rode outro comando. Responda só com o Markdown que o comando imprimir no stdout, do título até a linha do Composio, sem acrescentar nem resumir nada. Se o comando sair com código diferente de 0, comece a resposta com FALHOU e copie o stderr."
+```
+
+Rode o comando na raiz do repositório **principal**, não num worktree de card. `--delivery-thread` é o que `/whereami` mostra no chat. Para acompanhar:
+
+```sh
+cline schedule list --tags report --address 127.0.0.1:25463
+cline schedule trigger <schedule-id> --address 127.0.0.1:25463          # roda agora e manda ao Telegram
+cline schedule history <schedule-id> --limit 4 --address 127.0.0.1:25463
+```
+
+Três cuidados, todos vistos no primeiro disparo:
+
+- **Use `cline` (`bun apps/cli/src/index.ts`) a partir da raiz, não `bun run cli`.** `bun run cli` roda de dentro de `apps/cli`, e o schedule fica fora do escopo dessa pasta: `trigger` e `history` respondem "schedule does not exist in this workspace".
+- **Passe `--address`.** Sem ele, o comando usa um cliente local, que roda o agente no próprio processo, e nada chega ao hub nem ao Telegram. O endereço é o `rpcAddress` de `~/.cline/data/connectors/telegram/<bot>.json`. `trigger` só aceita um schedule habilitado.
+- **O provedor `claude-code` passa os comandos pelas permissões do Claude Code de quem roda o hub.** Sem uma regra que libere `bun run report` (por exemplo `Bash(bun run report:*)` em `permissions.allow`), o agente agendado tem o comando negado e a execução acaba em timeout. A outra saída é um provedor nativo (`cline auth`): em `--mode yolo`, ele roda o comando sem perguntar.
+
+Commite os arquivos de `reports/<projeto>/` junto com os de `metrics/<projeto>/`.

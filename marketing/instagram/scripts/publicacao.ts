@@ -37,6 +37,7 @@ import {
 	cabeNaJanela,
 	type Estado,
 	instanteLocal,
+	itensDoCalendario,
 	lerDecisao,
 	proximoDiaLivre,
 	type RegrasLegenda,
@@ -350,59 +351,16 @@ async function conexao(
 // ---------------------------------------------------------------------------------------------
 // Calendário
 
-const MESES = [
-	"jan",
-	"fev",
-	"mar",
-	"abr",
-	"mai",
-	"jun",
-	"jul",
-	"ago",
-	"set",
-	"out",
-	"nov",
-	"dez",
-];
-
 /** Linhas da tabela de calendário da campanha do projeto, com a data já em AAAA-MM-DD. */
 function lerCalendario(projeto: string, ano: number) {
 	const campanha = readFileSync(
 		join(pastaDoProjeto(projeto), "campaign.md"),
 		"utf8",
-	).split("\n");
-	const inicio = campanha.findIndex((l) =>
-		/^#{1,6}\s+(\d+\.\s*)?calend[áa]rio/i.test(l),
 	);
-	if (inicio < 0)
+	const itens = itensDoCalendario(campanha, ano);
+	if (!itens)
 		falhar(`projects/${projeto}/campaign.md não tem a seção de calendário`);
-	const linhas = campanha.slice(inicio + 1);
-	const fim = linhas.findIndex((l) => /^#{1,2}\s/.test(l));
-	const tabela = (fim < 0 ? linhas : linhas.slice(0, fim)).filter((l) =>
-		l.startsWith("|"),
-	);
-	const cabecalho =
-		tabela[0]
-			?.split("|")
-			.slice(1, -1)
-			.map((c) => c.trim().toLowerCase()) ?? [];
-	return tabela.slice(2).flatMap((linha) => {
-		const celulas = linha
-			.split("|")
-			.slice(1, -1)
-			.map((c) => c.trim());
-		const registro = Object.fromEntries(
-			cabecalho.map((c, i) => [c, celulas[i] ?? ""]),
-		);
-		const m = (registro.data ?? "").match(/(\d{1,2})\/([a-zç]{3})/i);
-		const mes = m ? MESES.indexOf(m[2].toLowerCase()) : -1;
-		if (!m || mes < 0) return [];
-		const data = `${ano}-${String(mes + 1).padStart(2, "0")}-${m[1].padStart(2, "0")}`;
-		const codigo = (registro.ideia ?? "").match(/\*\*(E\d+)/)?.[1];
-		return [
-			{ ...registro, dia: registro.data, data, ...(codigo ? { codigo } : {}) },
-		];
-	});
+	return itens;
 }
 
 // ---------------------------------------------------------------------------------------------

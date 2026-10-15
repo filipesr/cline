@@ -279,3 +279,73 @@ export function instanteLocal(dataHora: string, offset: string) {
 	if (Number.isNaN(t)) throw new Error(`data inválida: ${dataHora}`);
 	return t;
 }
+
+// ---------------------------------------------------------------------------------------------
+// Calendário
+
+const MESES = [
+	"jan",
+	"fev",
+	"mar",
+	"abr",
+	"mai",
+	"jun",
+	"jul",
+	"ago",
+	"set",
+	"out",
+	"nov",
+	"dez",
+];
+
+export type ItemDoCalendario = Record<string, string> & {
+	/** Como está na tabela, por exemplo "qui 22/out". */
+	dia: string;
+	/** AAAA-MM-DD. */
+	data: string;
+	/** E02, quando a ideia começa com **E02:**. */
+	codigo?: string;
+};
+
+/**
+ * Linhas da tabela de calendário de um campaign.md, com a data já em AAAA-MM-DD e as colunas
+ * pelo nome do cabeçalho em minúsculas (data, pilar, formato, ideia, cta…). Sem a seção de
+ * calendário, devolve `undefined`.
+ */
+export function itensDoCalendario(
+	campanha: string,
+	ano: number,
+): ItemDoCalendario[] | undefined {
+	const linhasDaCampanha = campanha.split("\n");
+	const inicio = linhasDaCampanha.findIndex((l) =>
+		/^#{1,6}\s+(\d+\.\s*)?calend[áa]rio/i.test(l),
+	);
+	if (inicio < 0) return undefined;
+	const linhas = linhasDaCampanha.slice(inicio + 1);
+	const fim = linhas.findIndex((l) => /^#{1,2}\s/.test(l));
+	const tabela = (fim < 0 ? linhas : linhas.slice(0, fim)).filter((l) =>
+		l.startsWith("|"),
+	);
+	const cabecalho =
+		tabela[0]
+			?.split("|")
+			.slice(1, -1)
+			.map((c) => c.trim().toLowerCase()) ?? [];
+	return tabela.slice(2).flatMap((linha) => {
+		const celulas = linha
+			.split("|")
+			.slice(1, -1)
+			.map((c) => c.trim());
+		const registro: Record<string, string> = Object.fromEntries(
+			cabecalho.map((c, i) => [c, celulas[i] ?? ""]),
+		);
+		const m = (registro.data ?? "").match(/(\d{1,2})\/([a-zç]{3})/i);
+		const mes = m ? MESES.indexOf(m[2].toLowerCase()) : -1;
+		if (!m || mes < 0) return [];
+		const data = `${ano}-${String(mes + 1).padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+		const codigo = (registro.ideia ?? "").match(/\*\*(E\d+)/)?.[1];
+		return [
+			{ ...registro, dia: registro.data, data, ...(codigo ? { codigo } : {}) },
+		];
+	});
+}
