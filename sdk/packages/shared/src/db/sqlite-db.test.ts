@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -152,4 +153,29 @@ describe("ensureSessionSchema", () => {
 			}
 		},
 	);
+});
+
+describe("loadSqliteDb under Bun", () => {
+	const bun = spawnSync("bun", ["--version"]).status === 0;
+
+	it.skipIf(!bun)("binds named parameters passed with bare keys", () => {
+		const dir = mkdtempSync(join(tmpdir(), "sqlite-db-bun-"));
+		try {
+			// vitest runs on node, so the bun:sqlite branch only runs in a bun process.
+			const script = `
+				import { loadSqliteDb } from ${JSON.stringify(join(import.meta.dirname, "sqlite-db.ts"))};
+				const db = loadSqliteDb(${JSON.stringify(join(dir, "named.db"))});
+				const row = db.prepare("SELECT :now AS now, :capacity AS capacity").get({ now: "2026-10-15", capacity: 10 });
+				process.stdout.write(JSON.stringify(row));
+			`;
+			const result = spawnSync("bun", ["-e", script], { encoding: "utf8" });
+			expect(result.stderr).toBe("");
+			expect(JSON.parse(result.stdout)).toEqual({
+				now: "2026-10-15",
+				capacity: 10,
+			});
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
 });

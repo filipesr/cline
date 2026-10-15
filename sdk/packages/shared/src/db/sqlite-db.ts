@@ -137,14 +137,17 @@ export function loadSqliteDb(filePath: string): SqliteDb {
 		const { Database } = require("bun:sqlite") as {
 			Database: new (
 				path: string,
-				options?: { create?: boolean },
+				options?: { create?: boolean; strict?: boolean },
 			) => {
 				query: (sql: string) => SqliteStatement;
 				exec: (sql: string) => void;
 				close?: () => void;
 			};
 		};
-		return wrapBunDb(new Database(filePath, { create: true }));
+		// `strict` binds `{ now }` to `:now`, as node:sqlite does. Without it bun:sqlite wants
+		// `{ ":now" }` and binds bare keys as NULL, so a query with named parameters matches
+		// nothing: the hub's cron runner never claimed a queued schedule run.
+		return wrapBunDb(new Database(filePath, { create: true, strict: true }));
 	}
 
 	// Suppress "ExperimentalWarning: SQLite is an experimental feature"
