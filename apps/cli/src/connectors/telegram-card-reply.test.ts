@@ -1,9 +1,15 @@
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { describe, expect, it, vi } from "vitest";
 
 import {
 	buildCardReplyBody,
 	editTelegramCardMessage,
 	joinTelegramMessageId,
+	loadCardPhotos,
+	postTelegramCardPhotos,
 	postTelegramCardReply,
 	resolveTelegramTopicId,
 	splitTelegramMessageId,
@@ -429,5 +435,215 @@ describe("a long card notice, sent with its file", () => {
 		expect(body.caption).toContain("Descartar");
 		expect(body).not.toHaveProperty("text");
 		expect(body).not.toHaveProperty("reply_markup");
+	});
+});
+
+describe("a card question with its pictures", () => {
+	const photo = {
+		data: new Uint8Array([137, 80, 78, 71]),
+		filename: "rascunho.png",
+		mimeType: "image/png",
+	};
+	const okFetch = (messageId: number) =>
+		vi.fn(async () => ({
+			json: async () => ({ ok: true, result: { message_id: messageId } }),
+		})) as unknown as typeof fetch;
+
+	// An Instagram draft is approved by looking at it: one message, the picture with the
+	// question as its caption and the choices under it.
+	it("posts one picture with the question as its caption and the buttons under it", async () => {
+		const fetchImpl = okFetch(410);
+
+		const result = await postTelegramCardReply({
+			botToken: "token",
+			fetchImpl,
+			request: {
+				chatId: "-1004378402573",
+				messageThreadId: "49",
+				replyToMessageId: "358",
+				text: "Aprovar o post?",
+				buttons: [
+					{ label: "Aprovar", actionId: "kbq:52cf6:1" },
+					{ label: "Pedir ajuste", actionId: "kbq:52cf6:2" },
+				],
+				photo,
+			},
+		});
+
+		expect(result).toEqual({ messageId: "-1004378402573:410" });
+		const [url, init] = vi.mocked(fetchImpl).mock.calls[0] as [
+			string,
+			RequestInit,
+		];
+		expect(url).toBe("https://api.telegram.org/bottoken/sendPhoto");
+		const form = init.body as FormData;
+		expect(form.get("caption")).toContain("Aprovar o post?");
+		expect(form.get("text")).toBeNull();
+		expect(form.get("document")).toBeNull();
+		expect(JSON.parse(String(form.get("reply_parameters")))).toEqual({
+			message_id: 358,
+			allow_sending_without_reply: true,
+		});
+		expect(JSON.parse(String(form.get("reply_markup")))).toEqual({
+			inline_keyboard: [
+				[{ text: "Aprovar", callback_data: "kbq:52cf6:1" }],
+				[{ text: "Pedir ajuste", callback_data: "kbq:52cf6:2" }],
+			],
+		});
+		const file = form.get("photo") as File;
+		expect(file.name).toBe("rascunho.png");
+		expect(file.type).toBe("image/png");
+		expect(new Uint8Array(await file.arrayBuffer())).toEqual(photo.data);
+	});
+
+	// Answering edits the question; on a picture that is its caption, and the existing fallback
+	// is what reaches it.
+	it("marks the question answered by editing the picture's caption", async () => {
+		const fetchImpl = vi
+			.fn()
+			.mockResolvedValueOnce({
+				json: async () => ({
+					ok: false,
+					description: "Bad Request: there is no text in the message to edit",
+				}),
+			})
+			.mockResolvedValueOnce({
+				json: async () => ({ ok: true }),
+			}) as unknown as typeof fetch;
+
+		const edited = await editTelegramCardMessage({
+			botToken: "token",
+			messageRef: "-100:410",
+			text: "Aprovar o post?\n\n✅ Aprovar",
+			fetchImpl,
+		});
+
+		expect(edited).toBe(true);
+		const calls = vi.mocked(fetchImpl).mock.calls as unknown as Array<
+			[string, RequestInit]
+		>;
+		expect(calls[0]?.[0]).toBe(
+			"https://api.telegram.org/bottoken/editMessageText",
+		);
+		expect(calls[1]?.[0]).toBe(
+			"https://api.telegram.org/bottoken/editMessageCaption",
+		);
+		const body = JSON.parse(String(calls[1]?.[1].body));
+		expect(body).toMatchObject({ chat_id: "-100", message_id: 410 });
+		expect(body.caption).toContain("Aprovar");
+		expect(body).not.toHaveProperty("reply_markup");
+	});
+
+	// An album takes no keyboard, so several pictures go first as one, replying to the card.
+	it("posts several pictures as one album replying to the card", async () => {
+		const fetchImpl = okFetch(411);
+		const second = {
+			...photo,
+			filename: "slide-2.jpg",
+			mimeType: "image/jpeg",
+		};
+
+		const posted = await postTelegramCardPhotos({
+			botToken: "token",
+			fetchImpl,
+			chatId: "-100",
+			messageThreadId: "49",
+			replyToMessageId: "358",
+			photos: [photo, second],
+		});
+
+		expect(posted).toBe(true);
+		const [url, init] = vi.mocked(fetchImpl).mock.calls[0] as [
+			string,
+			RequestInit,
+		];
+		expect(url).toBe("https://api.telegram.org/bottoken/sendMediaGroup");
+		const form = init.body as FormData;
+		expect(form.get("message_thread_id")).toBe("49");
+		expect(form.get("reply_markup")).toBeNull();
+		expect(JSON.parse(String(form.get("reply_parameters")))).toEqual({
+			message_id: 358,
+			allow_sending_without_reply: true,
+		});
+		expect(JSON.parse(String(form.get("media")))).toEqual([
+			{ type: "photo", media: "attach://photo0" },
+			{ type: "photo", media: "attach://photo1" },
+		]);
+		expect((form.get("photo0") as File).name).toBe("rascunho.png");
+		expect((form.get("photo1") as File).name).toBe("slide-2.jpg");
+	});
+
+	// A lone picture before a question too long for a caption: no caption, no keyboard.
+	it("posts a lone picture as a plain photo", async () => {
+		const fetchImpl = okFetch(412);
+
+		await postTelegramCardPhotos({
+			botToken: "token",
+			fetchImpl,
+			chatId: "-100",
+			replyToMessageId: "358",
+			photos: [photo],
+		});
+
+		const [url, init] = vi.mocked(fetchImpl).mock.calls[0] as [
+			string,
+			RequestInit,
+		];
+		expect(url).toBe("https://api.telegram.org/bottoken/sendPhoto");
+		const form = init.body as FormData;
+		expect(form.get("caption")).toBeNull();
+		expect(form.get("reply_markup")).toBeNull();
+		expect((form.get("photo") as File).name).toBe("rascunho.png");
+	});
+
+	it("reports a refused album instead of throwing", async () => {
+		const fetchImpl = vi.fn(async () => {
+			throw new Error("network down");
+		}) as unknown as typeof fetch;
+
+		await expect(
+			postTelegramCardPhotos({
+				botToken: "token",
+				fetchImpl,
+				chatId: "-100",
+				replyToMessageId: "358",
+				photos: [photo, photo],
+			}),
+		).resolves.toBe(false);
+	});
+
+	// The question matters more than any one picture: what cannot be sent is left out, and
+	// nothing left means the question goes out as text.
+	it("reads the pictures in order, skipping what cannot be sent", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "card-photos-"));
+		const first = join(dir, "b.png");
+		const second = join(dir, "a.JPG");
+		const empty = join(dir, "empty.png");
+		const huge = join(dir, "huge.webp");
+		const text = join(dir, "notes.txt");
+		writeFileSync(first, Buffer.from([1, 2, 3]));
+		writeFileSync(second, Buffer.from([4, 5]));
+		writeFileSync(empty, "");
+		writeFileSync(huge, Buffer.alloc(10 * 1024 * 1024 + 1));
+		writeFileSync(text, "x");
+
+		const photos = await loadCardPhotos([
+			first,
+			join(dir, "missing.png"),
+			empty,
+			huge,
+			text,
+			dir,
+			second,
+		]);
+
+		expect(photos.map((entry) => [entry.filename, entry.mimeType])).toEqual([
+			["b.png", "image/png"],
+			["a.JPG", "image/jpeg"],
+		]);
+		expect([...(photos[0]?.data ?? [])]).toEqual([1, 2, 3]);
+		await expect(loadCardPhotos([join(dir, "missing.png")])).resolves.toEqual(
+			[],
+		);
 	});
 });

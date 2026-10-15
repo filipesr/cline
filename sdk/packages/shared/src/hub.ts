@@ -1056,6 +1056,16 @@ export interface HubUINotifyPayload {
 	 * for it should stop offering them. `answer` is what was chosen, when the publisher knows.
 	 */
 	answered?: HubUINotifyAnswered;
+	/**
+	 * Pictures that belong to this notification, in the order they should be shown: absolute
+	 * paths to local `.png`, `.jpg`, `.jpeg` or `.webp` files, at most 10. They accompany a
+	 * question -- a draft to approve is judged by looking at it, not by reading its path.
+	 *
+	 * Paths rather than the files themselves because the hub runs on the same machine as the
+	 * publisher and every subscriber. A subscriber that cannot show pictures ignores them; one
+	 * that cannot read a file skips it, and the notification still has to arrive without it.
+	 */
+	images?: string[];
 }
 
 export interface HubUINotifyAnswered {

@@ -221,6 +221,62 @@ describe("UiNotifyClient", () => {
 		]);
 	});
 
+	// A draft to approve arrives with its pictures. Only what can be a local picture is passed
+	// on, in order and at most ten; whether the file is there is for the adapter to find out.
+	it("passes the pictures along, keeping only local picture paths", async () => {
+		const fake = fakeClient();
+		const deliver = vi.fn<
+			(
+				threadKey: string,
+				text: string,
+				options: NotifyDeliveryOptions,
+			) => Promise<void>
+		>(async () => undefined);
+		const subscription = await startUiNotifyDelivery({
+			createClient: () => fake.client,
+			readBindings: () => ({ t1: { state: { cwd: "/repo" } } }),
+			deliver,
+		});
+
+		const base = {
+			title: "Card",
+			body: "Aprovar o post?",
+			source: { workspacePath: "/repo", itemId: "20a5e" },
+			awaitingAnswer: true,
+		};
+		fake.emit({
+			...base,
+			images: [
+				"/repo/out/post.png",
+				"relative/post.png",
+				"",
+				42,
+				"/repo/out/notes.txt",
+				"/repo/out/slide.JPEG",
+				"/repo/out/slide.webp",
+			],
+		});
+		fake.emit({
+			...base,
+			images: Array.from({ length: 12 }, (_, i) => `/repo/out/${i}.jpg`),
+		});
+		fake.emit({ ...base, images: ["relative.png"] });
+		fake.emit({ ...base, images: "/repo/out/post.png" });
+		fake.emit(base);
+		await subscription.flush();
+
+		const images = deliver.mock.calls.map((call) => call[2].images);
+		expect(images[0]).toEqual([
+			"/repo/out/post.png",
+			"/repo/out/slide.JPEG",
+			"/repo/out/slide.webp",
+		]);
+		expect(images[1]).toEqual(
+			Array.from({ length: 10 }, (_, i) => `/repo/out/${i}.jpg`),
+		);
+		expect(images.slice(2)).toEqual([undefined, undefined, undefined]);
+	});
+
 	it("is satisfied by the real HubUIClient", () => {
 		// The first version of this module declared a `subscribe` method that HubUIClient does
 		// not have, and a cast hid it: every unit test passed against a fake with the invented

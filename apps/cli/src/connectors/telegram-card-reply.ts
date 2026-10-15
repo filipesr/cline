@@ -16,6 +16,9 @@
  * encodings live here, named, instead of being spelled out at the call site.
  */
 
+import { readFile, stat } from "node:fs/promises";
+import { basename, extname } from "node:path";
+
 import { TelegramFormatConverter } from "@chat-adapter/telegram";
 
 import type { CardButton } from "./card-question-message";
@@ -48,13 +51,43 @@ export interface CardReplyDocument {
 	filename: string;
 }
 
+/** A picture read off disk, ready to upload. */
+export interface CardReplyPhoto {
+	data: Uint8Array;
+	filename: string;
+	mimeType: string;
+}
+
+/** One uploaded file in a multipart body, under the field the Bot API reads it from. */
+interface FormFile {
+	field: string;
+	blob: Blob;
+	filename: string;
+}
+
+function documentFile(document: CardReplyDocument): FormFile {
+	return {
+		field: "document",
+		blob: new Blob([document.data], { type: "text/markdown;charset=utf-8" }),
+		filename: document.filename,
+	};
+}
+
+function photoFile(field: string, photo: CardReplyPhoto): FormFile {
+	return {
+		field,
+		blob: new Blob([new Uint8Array(photo.data)], { type: photo.mimeType }),
+		filename: photo.filename,
+	};
+}
+
 /**
  * A multipart body, which is the only way to upload a file. Its fields are strings, so the
  * nested ones -- the reply target, the keyboard -- travel as JSON, as the Bot API expects.
  */
 function toFormData(
 	body: Record<string, unknown>,
-	document: CardReplyDocument,
+	files: readonly FormFile[],
 ): FormData {
 	const form = new FormData();
 	for (const [key, value] of Object.entries(body)) {
@@ -63,11 +96,9 @@ function toFormData(
 			typeof value === "object" ? JSON.stringify(value) : String(value),
 		);
 	}
-	form.append(
-		"document",
-		new Blob([document.data], { type: "text/markdown;charset=utf-8" }),
-		document.filename,
-	);
+	for (const file of files) {
+		form.append(file.field, file.blob, file.filename);
+	}
 	return form;
 }
 
@@ -80,10 +111,12 @@ async function callWithMarkdownFallback(input: {
 	method:
 		| "sendMessage"
 		| "sendDocument"
+		| "sendPhoto"
+		| "sendMediaGroup"
 		| "editMessageText"
 		| "editMessageCaption";
 	buildBody: (plain: boolean) => Record<string, unknown>;
-	document?: CardReplyDocument;
+	files?: readonly FormFile[];
 	fetchImpl?: typeof fetch;
 }): Promise<TelegramResponse> {
 	const call = input.fetchImpl ?? fetch;
@@ -91,8 +124,8 @@ async function callWithMarkdownFallback(input: {
 		const body = input.buildBody(plain);
 		const response = await call(
 			`https://api.telegram.org/bot${input.botToken}/${input.method}`,
-			input.document
-				? { method: "POST", body: toFormData(body, input.document) }
+			input.files && input.files.length > 0
+				? { method: "POST", body: toFormData(body, input.files) }
 				: {
 						method: "POST",
 						headers: { "content-type": "application/json" },
@@ -160,6 +193,12 @@ export interface CardReplyRequest {
 	 * where there used to be the file and then the question on its own.
 	 */
 	document?: CardReplyDocument;
+	/**
+	 * A picture the question is about, such as a draft to approve. Sent with it, `text` is its
+	 * caption and the buttons sit under the picture. Never together with `document`: a message
+	 * carries one file.
+	 */
+	photo?: CardReplyPhoto;
 }
 
 function buildInlineKeyboard(
@@ -197,7 +236,7 @@ export function buildCardReplyBody(
 			? { message_thread_id: Number(request.messageThreadId) }
 			: {}),
 		...asCaptionWhen(
-			request.document !== undefined,
+			request.document !== undefined || request.photo !== undefined,
 			renderText(request.text, options.plain === true),
 		),
 		reply_parameters: {
@@ -227,9 +266,17 @@ export async function postTelegramCardReply(input: {
 	try {
 		const payload = await callWithMarkdownFallback({
 			botToken: input.botToken,
-			method: input.request.document ? "sendDocument" : "sendMessage",
+			method: input.request.photo
+				? "sendPhoto"
+				: input.request.document
+					? "sendDocument"
+					: "sendMessage",
 			buildBody: (plain) => buildCardReplyBody(input.request, { plain }),
-			document: input.request.document,
+			files: input.request.photo
+				? [photoFile("photo", input.request.photo)]
+				: input.request.document
+					? [documentFile(input.request.document)]
+					: undefined,
 			fetchImpl: input.fetchImpl,
 		});
 		if (!payload.ok || typeof payload.result?.message_id !== "number") {
@@ -243,6 +290,101 @@ export async function postTelegramCardReply(input: {
 		};
 	} catch {
 		return undefined;
+	}
+}
+
+/** Telegram refuses a photo upload larger than this. */
+const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
+
+const PHOTO_MIME_TYPES: Record<string, string> = {
+	".png": "image/png",
+	".jpg": "image/jpeg",
+	".jpeg": "image/jpeg",
+	".webp": "image/webp",
+};
+
+/**
+ * Reads a notification's pictures off disk, in order. One that is missing, unreadable, too large
+ * or not a picture is left out rather than failing the rest: the question matters more than any
+ * one picture, and an empty result means it goes out as text, as it did before pictures.
+ */
+export async function loadCardPhotos(
+	paths: readonly string[],
+): Promise<CardReplyPhoto[]> {
+	const photos: CardReplyPhoto[] = [];
+	for (const path of paths) {
+		const mimeType = PHOTO_MIME_TYPES[extname(path).toLowerCase()];
+		if (!mimeType) {
+			continue;
+		}
+		try {
+			const info = await stat(path);
+			if (!info.isFile() || info.size === 0 || info.size > MAX_PHOTO_BYTES) {
+				continue;
+			}
+			photos.push({
+				data: await readFile(path),
+				filename: basename(path),
+				mimeType,
+			});
+		} catch {
+			// Gone or unreadable: skipped, like one that is too large.
+		}
+	}
+	return photos;
+}
+
+/**
+ * Posts pictures on their own as a reply to the card: one as a photo, several as an album. Used
+ * when the pictures cannot carry the question -- an album takes no keyboard, and a question too
+ * long for a caption goes out as a file -- so they arrive just before it. Reports whether
+ * Telegram took them; the question is sent either way.
+ */
+export async function postTelegramCardPhotos(input: {
+	botToken: string;
+	chatId: string;
+	messageThreadId?: string;
+	replyToMessageId: string;
+	photos: readonly CardReplyPhoto[];
+	fetchImpl?: typeof fetch;
+}): Promise<boolean> {
+	if (input.photos.length === 0) {
+		return false;
+	}
+	const target = {
+		chat_id: input.chatId,
+		...(input.messageThreadId
+			? { message_thread_id: Number(input.messageThreadId) }
+			: {}),
+		reply_parameters: {
+			message_id: Number(input.replyToMessageId),
+			allow_sending_without_reply: true,
+		},
+	};
+	const album = input.photos.length > 1;
+	try {
+		const payload = await callWithMarkdownFallback({
+			botToken: input.botToken,
+			method: album ? "sendMediaGroup" : "sendPhoto",
+			// An album names each upload by its field: `attach://photo0` is the file sent as `photo0`.
+			buildBody: () =>
+				album
+					? {
+							...target,
+							media: input.photos.map((_, index) => ({
+								type: "photo",
+								media: `attach://photo${index}`,
+							})),
+						}
+					: target,
+			files: album
+				? input.photos.map((photo, index) => photoFile(`photo${index}`, photo))
+				: [photoFile("photo", input.photos[0] as CardReplyPhoto)],
+			fetchImpl: input.fetchImpl,
+		});
+		return payload.ok === true;
+	} catch {
+		return false;
 	}
 }
 
@@ -297,8 +439,9 @@ export async function editTelegramCardMessage(input: {
 				fetchImpl: input.fetchImpl,
 			});
 		const payload = await edit(false);
-		// A notice sent with its file is that file's caption. Telegram says so rather than the
-		// connector remembering which messages carry one -- which a restart would forget.
+		// A notice sent with its file -- or with its picture -- is that file's caption. Telegram
+		// says so rather than the connector remembering which messages carry one -- which a
+		// restart would forget.
 		if (
 			!payload.ok &&
 			/no text in the message to edit/i.test(payload.description ?? "")

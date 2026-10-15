@@ -76,7 +76,10 @@ import {
 import { InMemoryStateAdapter } from "../stores/memory-state";
 import { startConnectorTaskUpdateRelay } from "../task-updates";
 import {
+	type CardReplyPhoto,
 	editTelegramCardMessage,
+	loadCardPhotos,
+	postTelegramCardPhotos,
 	postTelegramCardReply,
 	resolveTelegramTopicId,
 	splitTelegramMessageId,
@@ -1266,26 +1269,65 @@ class TelegramConnector extends ConnectorBase<
 					}
 					if (anchorRef && options.itemId) {
 						const taskId = options.itemId;
-						const reply = (text: string, withFile: boolean) =>
+						const messageThreadId = resolveTelegramTopicId(threadKey);
+						// Pictures go with a question only: a draft to approve is judged by
+						// looking at it. Any other notice with pictures is sent as it always was.
+						const photos =
+							options.awaitingAnswer && options.images
+								? await loadCardPhotos(options.images)
+								: [];
+						const reply = (
+							text: string,
+							withFile: boolean,
+							photo?: CardReplyPhoto,
+						) =>
 							postTelegramCardReply({
 								botToken,
 								request: {
 									chatId: anchorRef.chatId,
-									messageThreadId: resolveTelegramTopicId(threadKey),
+									messageThreadId,
 									replyToMessageId: anchorRef.messageId,
 									text,
 									buttons,
-									...(withFile && notice.document
-										? {
-												document: {
-													data: fullText,
-													filename:
-														notice.document.files[0]?.filename ?? "texto.md",
-												},
-											}
-										: {}),
+									...(photo
+										? { photo }
+										: withFile && notice.document
+											? {
+													document: {
+														data: fullText,
+														filename:
+															notice.document.files[0]?.filename ?? "texto.md",
+													},
+												}
+											: {}),
 								},
 							});
+						// One picture carries the question: the caption is the question and the
+						// buttons sit under the picture. A notice short enough to stay a message
+						// is under 900 characters, inside the 1024 a caption allows; a longer one
+						// is a file with its own caption, so its picture goes just before it.
+						const withPhoto =
+							photos.length === 1 && !notice.document
+								? await reply(bodyText, false, photos[0])
+								: undefined;
+						// Several pictures are an album, and an album takes no buttons: it goes
+						// first, and the question follows as it would without pictures. A
+						// refused album costs the pictures, never the question.
+						if (photos.length > 1 || (photos.length === 1 && notice.document)) {
+							const posted = await postTelegramCardPhotos({
+								botToken,
+								chatId: anchorRef.chatId,
+								messageThreadId,
+								replyToMessageId: anchorRef.messageId,
+								photos,
+							});
+							if (!posted) {
+								loggerAdapter.core.log(
+									"Telegram card pictures refused; sending the question without them",
+									{ severity: "warn", transport: "telegram", threadKey },
+								);
+							}
+						}
 						// One message where it can: the file, with the notice as its caption and
 						// the buttons under it. Reported from use: the file and the question came
 						// as two messages, one after the other.
@@ -1298,7 +1340,9 @@ class TelegramConnector extends ConnectorBase<
 						} else {
 							await postNoticeFile();
 						}
-						const replied = withFile ?? (await reply(bodyText, false));
+						// A picture Telegram refused leaves the question as text, as before.
+						const replied =
+							withPhoto ?? withFile ?? (await reply(bodyText, false));
 						if (replied) {
 							if (buttons.length > 0) {
 								questionMessages.set(replied.messageId, {

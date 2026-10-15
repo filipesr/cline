@@ -1,3 +1,5 @@
+import { extname, isAbsolute } from "node:path";
+
 import { HubUIClient } from "@cline/core";
 import type {
 	HubUINotifyAction,
@@ -77,6 +79,8 @@ export interface NotifyDeliveryOptions {
 	actions?: HubUINotifyAction[];
 	/** The question the item was waiting on is settled, wherever it was answered. */
 	answered?: HubUINotifyAnswered;
+	/** Local pictures that go with it, in order; only paths that look like one survive. */
+	images?: string[];
 }
 
 export interface UiNotifySubscription {
@@ -121,6 +125,30 @@ function readAnswered(value: unknown): HubUINotifyAnswered | undefined {
 	return text ? { answer: text } : {};
 }
 
+const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp"]);
+const MAX_IMAGES = 10;
+
+/**
+ * Only what can be a local picture: an absolute path with a picture's extension. Whether the
+ * file is really there is the adapter's to find out when it reads it -- the hub event is
+ * read before anything is sent, and a missing file must not cost the notification.
+ */
+function readImages(value: unknown): string[] | undefined {
+	if (!Array.isArray(value)) {
+		return undefined;
+	}
+	const images = value
+		.filter(
+			(entry): entry is string =>
+				typeof entry === "string" &&
+				entry.trim() !== "" &&
+				isAbsolute(entry) &&
+				IMAGE_EXTENSIONS.has(extname(entry).toLowerCase()),
+		)
+		.slice(0, MAX_IMAGES);
+	return images.length > 0 ? images : undefined;
+}
+
 function readNotification(payload: unknown):
 	| {
 			text: string;
@@ -133,6 +161,7 @@ function readNotification(payload: unknown):
 			updateOnly: boolean;
 			actions?: HubUINotifyAction[];
 			answered?: HubUINotifyAnswered;
+			images?: string[];
 	  }
 	| undefined {
 	if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
@@ -160,6 +189,7 @@ function readNotification(payload: unknown):
 		updateOnly: record.updateOnly === true,
 		actions: readActions(record.actions),
 		answered: readAnswered(record.answered),
+		images: readImages(record.images),
 	};
 }
 
@@ -212,6 +242,7 @@ export async function startUiNotifyDelivery<
 								body: notification.body,
 								actions: notification.actions,
 								answered: notification.answered,
+								images: notification.images,
 							})
 							.catch((error) => {
 								input.onError?.(error);
