@@ -94,6 +94,8 @@ O passo a passo é escrito para o agente do card do Kanban, mas também pode ser
    4. lê o permalink (`INSTAGRAM_GET_IG_MEDIA`) e grava `instagram.mediaId`, `permalink`, `publicadoEm` e os ids dos containers no `post.json`. Também compara a legenda publicada com a aprovada e avisa se diferirem;
    5. espelha na Página, se `facebook.espelhar` estiver ligado e a Página estiver fixada: `FACEBOOK_CREATE_PHOTO_POST` para post, `FACEBOOK_CREATE_MULTI_PHOTO_POST` para carrossel, e depois `FACEBOOK_GET_POST` para o `permalink_url`. Se a Página falhar, o Instagram continua publicado, e a nova tentativa é `publicar --so-facebook`.
 
+**Só na Página, sem Instagram.** Enquanto o Instagram não está conectado no Composio, `conexao` avisa e segue só com o Facebook. Fixe a Página com `conexao P --salvar --pagina "Party Share"`. Num post `aprovado`, `publicar P D --so-facebook` publica só na Página, com as mesmas travas: precisa do "Aprovar" da rodada e cabe no teto de 3 por 24h, e o post publicado só na Página conta nesse teto. Se a Página falhar, o post continua `aprovado` e o erro fica em `facebook.erro`. Num post já `publicado`, a mesma flag só refaz o espelho.
+
 O agendamento recorrente automático está fora desta fase. Um post `agendado` vai ao ar quando alguém roda `publicar` de novo no horário marcado, à mão ou por um card.
 
 ### Prompt do card de um post

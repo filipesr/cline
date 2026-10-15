@@ -228,33 +228,8 @@ function rodar(args: string[], opcoes?: { capturar?: boolean }) {
  * (@, tipo, ig_user_id), o limite da Meta e a Página. Há mais de uma Página na conta, então a
  * do projeto é a já fixada, a ligada ao Instagram ou a que `--pagina` nomear; nunca um palpite.
  */
-async function conexao(
-	projeto: string,
-	opcoes: { salvar: boolean; pagina?: string },
-) {
-	const config = lerConfig(projeto);
-	const composio = criarComposio();
-	const resumo = await composio.conexoes(["instagram", "facebook"]);
-	console.log(
-		`Conexões: ${JSON.stringify(acharCampo(resumo, "summary") ?? resumo).slice(0, 600)}`,
-	);
-	// Sem conexão ativa, a primeira ação falha com um erro genérico do Composio; dizer qual falta.
-	const resultados = (acharCampo(resumo, "results") ?? {}) as Record<
-		string,
-		{ status?: string; accounts?: { status?: string }[] } | undefined
-	>;
-	const faltam = ["instagram", "facebook"].filter((tk) => {
-		const r = resultados[tk];
-		return r
-			? r.status !== "active" && !r.accounts?.some((c) => c.status === "active")
-			: acharCampo(resumo, "active_connections") === 0;
-	});
-	if (faltam.length > 0) {
-		falhar(
-			`sem conexão ativa no Composio para ${faltam.join(" e ")}; conclua a autorização em composio.dev → For You e rode de novo`,
-		);
-	}
-
+/** Conta do Instagram e limite da Meta, para conexao. */
+async function lerInstagram(composio: Composio, config: Config) {
 	const contaIg = config.instagram.contaComposio;
 	const info = await composio.executar(
 		"INSTAGRAM_GET_USER_INFO",
@@ -281,6 +256,44 @@ async function conexao(
 	console.log(
 		`Limite da Meta: ${acharCampo(limite, "quota_usage") ?? "?"} de ${acharCampo(limite, "quota_total") ?? "?"} em 24h`,
 	);
+	return { igUserId, usuario };
+}
+
+async function conexao(
+	projeto: string,
+	opcoes: { salvar: boolean; pagina?: string },
+) {
+	const config = lerConfig(projeto);
+	const composio = criarComposio();
+	const resumo = await composio.conexoes(["instagram", "facebook"]);
+	console.log(
+		`Conexões: ${JSON.stringify(acharCampo(resumo, "summary") ?? resumo).slice(0, 600)}`,
+	);
+	// Sem conexão ativa, a primeira ação falha com um erro genérico do Composio; dizer qual falta.
+	const resultados = (acharCampo(resumo, "results") ?? {}) as Record<
+		string,
+		{ status?: string; accounts?: { status?: string }[] } | undefined
+	>;
+	const faltam = ["instagram", "facebook"].filter((tk) => {
+		const r = resultados[tk];
+		return r
+			? r.status !== "active" && !r.accounts?.some((c) => c.status === "active")
+			: acharCampo(resumo, "active_connections") === 0;
+	});
+	// Sem Instagram a Página ainda publica (publicar --so-facebook); sem Facebook não há o que fazer.
+	if (faltam.includes("facebook")) {
+		falhar(
+			`sem conexão ativa no Composio para ${faltam.join(" e ")}; conclua a autorização em composio.dev → For You e rode de novo`,
+		);
+	}
+	const comInstagram = !faltam.includes("instagram");
+	if (!comInstagram) {
+		console.warn(
+			"aviso: sem conexão ativa no Composio para instagram; seguindo só com a Página (publicar --so-facebook)",
+		);
+	}
+	const ig = comInstagram ? await lerInstagram(composio, config) : undefined;
+	const igUserId = ig?.igUserId ?? config.instagram.igUserId;
 
 	const paginas = await composio.executar(
 		"FACEBOOK_LIST_MANAGED_PAGES",
@@ -301,7 +314,7 @@ async function conexao(
 	}
 	const escolhida =
 		itens.find((p) => String(p.id) === config.facebook?.pageId) ??
-		itens.find((p) => ligadaDe(p) === igUserId) ??
+		(igUserId ? itens.find((p) => ligadaDe(p) === igUserId) : undefined) ??
 		(opcoes.pagina
 			? itens.find(
 					(p) =>
@@ -318,7 +331,7 @@ async function conexao(
 	);
 
 	if (opcoes.salvar) {
-		config.instagram = { ...config.instagram, igUserId, usuario };
+		if (ig) config.instagram = { ...config.instagram, ...ig };
 		if (escolhida) {
 			config.facebook = {
 				espelhar: config.facebook?.espelhar ?? true,
@@ -699,7 +712,7 @@ function ocupados(projeto: string, exceto?: string) {
 		const pub = lerJson<Post>(caminho).publicacao;
 		const quando =
 			pub?.estado === "publicado"
-				? pub.instagram?.publicadoEm
+				? (pub.instagram?.publicadoEm ?? pub.facebook?.publicadoEm)
 				: pub?.estado === "agendado"
 					? pub.agendadoPara
 					: undefined;
@@ -755,8 +768,8 @@ async function publicar(
 	const { pasta, post, salvar } = abrirPost(projeto, pastaPost);
 	const pub = publicacaoDe(post);
 
-	if (opcoes.soFacebook) {
-		exigirEstado(pub, "publicado");
+	// --so-facebook num post já publicado refaz só o espelho na Página.
+	if (opcoes.soFacebook && pub.estado === "publicado") {
 		await espelharNoFacebook(criarComposio(), config, pub);
 		salvar();
 		return;
@@ -823,13 +836,36 @@ async function publicar(
 		);
 	}
 
+	// --so-facebook num post aprovado publica só na Página (o Instagram pode nem estar conectado).
+	// Passou pelas mesmas travas: aprovação da rodada e teto do projeto.
+	if (opcoes.soFacebook) {
+		if (!config.facebook?.pageId)
+			falhar(
+				'o projeto não fixou a Página; rode "conexao --salvar --pagina "<nome>""',
+			);
+		await espelharNoFacebook(criarComposio(), config, pub, {
+			soPagina: { salvar },
+		});
+		pub.estado = "publicado";
+		pub.agendadoPara = undefined;
+		registrar(
+			pub,
+			"publicado",
+			`só na Página ${pub.facebook?.permalink ?? ""}`,
+		);
+		salvar();
+		return;
+	}
+
 	// 2. Conta e limite da Meta (content_publishing_limit).
 	// O cliente só nasce aqui: o que o projeto recusa não precisa da chave nem da rede.
 	const composio = criarComposio();
 	const contaIg = config.instagram.contaComposio;
 	const igUserId = config.instagram.igUserId;
 	if (!igUserId)
-		falhar('o projeto não fixou a conta do Instagram; rode "conexao --salvar"');
+		falhar(
+			'o projeto não fixou a conta do Instagram; rode "conexao --salvar", ou publique só na Página com --so-facebook',
+		);
 	const limiteMeta = await composio.executar(
 		"INSTAGRAM_GET_IG_USER_CONTENT_PUBLISHING_LIMIT",
 		{ ig_user_id: igUserId, fields: "quota_usage,config" },
@@ -935,9 +971,11 @@ async function espelharNoFacebook(
 	composio: Composio,
 	config: Config,
 	pub: Publicacao,
+	/** soPagina: a publicação é só na Página; falhar grava o erro com salvar e encerra. */
+	opcoes: { soPagina?: { salvar: () => void } } = {},
 ) {
 	const fb = config.facebook;
-	if (!fb?.espelhar || !fb.pageId) return;
+	if (!fb?.pageId || (!fb.espelhar && !opcoes.soPagina)) return;
 	if (pub.facebook?.postId) {
 		console.log(`Facebook já publicado: ${pub.facebook.postId}`);
 		return;
@@ -984,6 +1022,11 @@ async function espelharNoFacebook(
 		const mensagemErro = (erro as Error).message;
 		pub.facebook = { pageId: fb.pageId, erro: mensagemErro };
 		registrar(pub, "facebook-falhou", mensagemErro);
+		// Só na Página: falhar aqui é falhar a publicação, e o post continua aprovado.
+		if (opcoes.soPagina) {
+			opcoes.soPagina.salvar();
+			falhar(`a Página não publicou: ${mensagemErro}`);
+		}
 		console.error(
 			`aviso: Instagram publicado, Página não: ${mensagemErro}. Tente de novo com --so-facebook.`,
 		);
@@ -1010,11 +1053,18 @@ async function remover(projeto: string, pastaPost: string) {
 	}
 	pub.estado = "removido";
 	pub.removidoEm = agora();
-	registrar(pub, "removido", "Instagram: apagar à mão no app");
-	salvar();
-	console.log(
-		`Instagram: apague à mão ${pub.instagram?.permalink ?? "(sem permalink)"} (Mais opções → Excluir).`,
+	// Um post publicado só na Página não tem o que apagar no Instagram.
+	registrar(
+		pub,
+		"removido",
+		pub.instagram ? "Instagram: apagar à mão no app" : "só na Página",
 	);
+	salvar();
+	if (pub.instagram) {
+		console.log(
+			`Instagram: apague à mão ${pub.instagram.permalink ?? "(sem permalink)"} (Mais opções → Excluir).`,
+		);
+	}
 }
 
 function estado(projeto: string, pastaPost: string) {

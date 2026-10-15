@@ -1,0 +1,162 @@
+{
+	"projeto": "exemplo-cline",
+	"slug": "roda-no-seu-computador",
+	"data": "2026-10-15",
+	"ideia": "Cline roda no seu computador, com o seu código",
+	"pilar": "Produto",
+	"formato": "post",
+	"quantidade": 1,
+	"proporcao": "feed",
+	"dimensoes": {
+		"largura": 1080,
+		"altura": 1350,
+		"geracao": [
+			1088,
+			1360
+		]
+	},
+	"modelo": {
+		"nome": "flux2-klein-4b",
+		"quantizar": null,
+		"passos": 4,
+		"guidance": 1,
+		"mflux": "0.22.0",
+		"cwd": "marketing/instagram"
+	},
+	"fontes": {
+		"campaign.md": "090d0f622c3d65f8",
+		"persona.md": "552adc2e2745afe8",
+		"contexto.md": "f48f8e55881151e7",
+		"assets/app-icon.png": "ae9709b94db0d53f"
+	},
+	"direcaoVisual": "calm editorial product photography, dark warm palette of charcoal and walnut wood with a single soft amber accent light, matte surfaces, shallow depth of field, 50mm lens, gentle film grain, generous negative space, minimal uncluttered composition, natural real-world materials, any screens are out of focus or out of frame",
+	"referencias": [
+		"assets/app-icon.png"
+	],
+	"seeds": [
+		301493551,
+		27998674,
+		277246050
+	],
+	"imagens": [
+		{
+			"n": "01",
+			"cena": "The app icon from the reference image as a solid, softly glossy 3D object standing upright on a dark walnut desk, beside the edge of an open laptop whose screen glows softly far out of focus, late evening, warm desk lamp light from the left, camera at desk height, the object in the lower third with calm empty dark space above it",
+			"prompt": "The app icon from the reference image as a solid, softly glossy 3D object standing upright on a dark walnut desk, beside the edge of an open laptop whose screen glows softly far out of focus, late evening, warm desk lamp light from the left, camera at desk height, the object in the lower third with calm empty dark space above it. The product shown in the reference image(s) must appear exactly as it is: same shape, proportions, colors, logo and screen content. Do not redraw, restyle or invent any interface, logo or lettering. Visual direction: calm editorial product photography, dark warm palette of charcoal and walnut wood with a single soft amber accent light, matte surfaces, shallow depth of field, 50mm lens, gentle film grain, generous negative space, minimal uncluttered composition, natural real-world materials, any screens are out of focus or out of frame. No added text, letters, words, captions, watermarks or extra logos anywhere in the image; only what is already on the reference product.",
+			"promptArquivo": "prompts/01.txt",
+			"variacoes": [
+				{
+					"id": "v1",
+					"seed": 301493551,
+					"arquivo": "01-v1.jpg",
+					"bytes": 238956,
+					"qualidadeJpeg": 92,
+					"segundos": 72.4,
+					"comando": [
+						"mflux-generate-flux2-edit",
+						"--model",
+						"flux2-klein-4b",
+						"--steps",
+						"4",
+						"--guidance",
+						"1",
+						"--width",
+						"1088",
+						"--height",
+						"1360",
+						"--prompt-file",
+						"projects/exemplo-cline/posts/2026-10-15-roda-no-seu-computador/prompts/01.txt",
+						"--seed",
+						"301493551",
+						"--image-paths",
+						"projects/exemplo-cline/assets/app-icon.png",
+						"--output",
+						"projects/exemplo-cline/posts/2026-10-15-roda-no-seu-computador/.bruto/01-v1.png"
+					]
+				},
+				{
+					"id": "v2",
+					"seed": 27998674,
+					"arquivo": "01-v2.jpg",
+					"bytes": 247068,
+					"qualidadeJpeg": 92,
+					"segundos": 68,
+					"comando": [
+						"mflux-generate-flux2-edit",
+						"--model",
+						"flux2-klein-4b",
+						"--steps",
+						"4",
+						"--guidance",
+						"1",
+						"--width",
+						"1088",
+						"--height",
+						"1360",
+						"--prompt-file",
+						"projects/exemplo-cline/posts/2026-10-15-roda-no-seu-computador/prompts/01.txt",
+						"--seed",
+						"27998674",
+						"--image-paths",
+						"projects/exemplo-cline/assets/app-icon.png",
+						"--output",
+						"projects/exemplo-cline/posts/2026-10-15-roda-no-seu-computador/.bruto/01-v2.png"
+					]
+				},
+				{
+					"id": "v3",
+					"seed": 277246050,
+					"arquivo": "01-v3.jpg",
+					"bytes": 239118,
+					"qualidadeJpeg": 92,
+					"segundos": 65.2,
+					"comando": [
+						"mflux-generate-flux2-edit",
+						"--model",
+						"flux2-klein-4b",
+						"--steps",
+						"4",
+						"--guidance",
+						"1",
+						"--width",
+						"1088",
+						"--height",
+						"1360",
+						"--prompt-file",
+						"projects/exemplo-cline/posts/2026-10-15-roda-no-seu-computador/prompts/01.txt",
+						"--seed",
+						"277246050",
+						"--image-paths",
+						"projects/exemplo-cline/assets/app-icon.png",
+						"--output",
+						"projects/exemplo-cline/posts/2026-10-15-roda-no-seu-computador/.bruto/01-v3.png"
+					]
+				}
+			]
+		}
+	],
+	"geradoEm": "2026-10-15T17:49:38.935Z",
+	"revisao": {
+		"escolhidas": [
+			{
+				"n": "01",
+				"variacao": "v3",
+				"seed": 277246050,
+				"arquivo": "final/01.jpg",
+				"bytes": 239118
+			}
+		],
+		"motivo": "Ícone fiel à referência (pino, abas laterais, dois olhos vazados), tela do notebook bem desfocada e sem interface legível, um único acento âmbar do abajur e espaço escuro acima do objeto: é a que segue a direção visual da campanha.",
+		"descartadas": [
+			{
+				"id": "01-v1",
+				"motivo": "Tela do notebook clara e quase nítida, com interface e foto inventadas que roubam a atenção; fere 'telas desfocadas'."
+			},
+			{
+				"id": "01-v2",
+				"motivo": "Ícone fiel, mas a tela mostra um dashboard colorido (verde/roxo) fora da paleta grafite e âmbar."
+			}
+		],
+		"revisadoEm": "2026-10-15T17:50:08.624Z"
+	}
+}

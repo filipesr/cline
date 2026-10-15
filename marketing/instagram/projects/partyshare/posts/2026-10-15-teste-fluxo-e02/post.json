@@ -1,0 +1,261 @@
+{
+	"projeto": "partyshare",
+	"slug": "teste-fluxo-e02",
+	"data": "2026-10-15",
+	"ideia": "E02 (teste do fluxo com imagem gerada): a confraternização que a empresa pagou e não guardou",
+	"pilar": "2. Confraternização",
+	"formato": "post",
+	"quantidade": 1,
+	"proporcao": "feed",
+	"dimensoes": {
+		"largura": 1080,
+		"altura": 1350,
+		"geracao": [
+			1088,
+			1360
+		]
+	},
+	"modelo": {
+		"nome": "flux2-klein-4b",
+		"quantizar": null,
+		"passos": 4,
+		"guidance": 1,
+		"mflux": "0.22.0",
+		"cwd": "marketing/instagram"
+	},
+	"fontes": {
+		"campaign.md": "e60597f63e576a3c"
+	},
+	"direcaoVisual": "Candid photo of [CENA: e.g. a company year-end party, colleagues at a round table raising phones toward a large LED wall], shot from a guest's point of view, slightly tilted framing, between shoulders, smartphone camera look, light grain, warm amber party lights and bokeh (#FFBA4B), deep purple night ambience (#141121), subtle coral accents (#FF4F73), diverse adults in smart-casual clothes, genuine laughter, no posed studio look, no real brand logos, [FORMATO: vertical 4:5 | vertical 9:16], leave clean dark space at the [top|bottom] for a headline. Avoid: visible text, app store screens, fake dashboards, stock-photo smiles.",
+	"referencias": [],
+	"seeds": [
+		286186894,
+		968902143,
+		998248948
+	],
+	"imagens": [
+		{
+			"n": "01",
+			"cena": "a company year-end party at night, a round table of colleagues of clearly different ages and ethnicities (a Black woman in her fifties, a young East Asian man, a gray-haired white man, a Latina woman in her thirties) laughing together, one of them raising a phone toward the stage, seen from behind their shoulders, the phone held so its screen faces away from the camera, the stage itself out of frame so only its warm glow reaches the room",
+			"prompt": "Candid photo of a company year-end party at night, a round table of colleagues of clearly different ages and ethnicities (a Black woman in her fifties, a young East Asian man, a gray-haired white man, a Latina woman in her thirties) laughing together, one of them raising a phone toward the stage, seen from behind their shoulders, the phone held so its screen faces away from the camera, the stage itself out of frame so only its warm glow reaches the room, shot from a guest's point of view, slightly tilted framing, between shoulders, smartphone camera look, light grain, warm amber party lights and bokeh (#FFBA4B), deep purple night ambience (#141121), subtle coral accents (#FF4F73), diverse adults in smart-casual clothes, genuine laughter, no posed studio look, no real brand logos, vertical 4:5, leave clean dark space at the top for a headline. Avoid: visible text, app store screens, fake dashboards, stock-photo smiles. No text, letters, words, captions, logos or watermarks anywhere in the image.",
+			"promptArquivo": "prompts/01.txt",
+			"variacoes": [
+				{
+					"id": "v1",
+					"seed": 286186894,
+					"arquivo": "01-v1.jpg",
+					"bytes": 292519,
+					"qualidadeJpeg": 92,
+					"segundos": 39.7,
+					"comando": [
+						"mflux-generate-flux2",
+						"--model",
+						"flux2-klein-4b",
+						"--steps",
+						"4",
+						"--guidance",
+						"1",
+						"--width",
+						"1088",
+						"--height",
+						"1360",
+						"--prompt-file",
+						"projects/partyshare/posts/2026-10-15-teste-fluxo-e02/prompts/01.txt",
+						"--seed",
+						"286186894",
+						"--output",
+						"projects/partyshare/posts/2026-10-15-teste-fluxo-e02/.bruto/01-v1.png"
+					]
+				},
+				{
+					"id": "v2",
+					"seed": 968902143,
+					"arquivo": "01-v2.jpg",
+					"bytes": 299032,
+					"qualidadeJpeg": 92,
+					"segundos": 41.1,
+					"comando": [
+						"mflux-generate-flux2",
+						"--model",
+						"flux2-klein-4b",
+						"--steps",
+						"4",
+						"--guidance",
+						"1",
+						"--width",
+						"1088",
+						"--height",
+						"1360",
+						"--prompt-file",
+						"projects/partyshare/posts/2026-10-15-teste-fluxo-e02/prompts/01.txt",
+						"--seed",
+						"968902143",
+						"--output",
+						"projects/partyshare/posts/2026-10-15-teste-fluxo-e02/.bruto/01-v2.png"
+					]
+				},
+				{
+					"id": "v3",
+					"seed": 998248948,
+					"arquivo": "01-v3.jpg",
+					"bytes": 296581,
+					"qualidadeJpeg": 92,
+					"segundos": 40.7,
+					"comando": [
+						"mflux-generate-flux2",
+						"--model",
+						"flux2-klein-4b",
+						"--steps",
+						"4",
+						"--guidance",
+						"1",
+						"--width",
+						"1088",
+						"--height",
+						"1360",
+						"--prompt-file",
+						"projects/partyshare/posts/2026-10-15-teste-fluxo-e02/prompts/01.txt",
+						"--seed",
+						"998248948",
+						"--output",
+						"projects/partyshare/posts/2026-10-15-teste-fluxo-e02/.bruto/01-v3.png"
+					]
+				}
+			]
+		}
+	],
+	"geradoEm": "2026-10-15T18:44:50.441Z",
+	"revisao": {
+		"escolhidas": [
+			{
+				"n": "01",
+				"variacao": "v2",
+				"seed": 968902143,
+				"arquivo": "final/01.jpg",
+				"bytes": 299032
+			}
+		],
+		"motivo": "Mais espontânea e 'de quem estava lá': risadas de verdade, mesa diversa em idade e origem, luz âmbar e roxo-noite da paleta, faixa escura no topo para a headline. O celular mostra só o visor da câmera; a captura real entra na edição, como manda a campanha.",
+		"descartadas": [
+			{
+				"id": "01-v1",
+				"motivo": "Todos sorrindo de frente para a câmera: cara de banco de imagem, que a campanha proíbe."
+			},
+			{
+				"id": "01-v3",
+				"motivo": "Dois rapazes quase idênticos lado a lado (rosto duplicado)."
+			}
+		],
+		"revisadoEm": "2026-10-15T18:45:11.943Z"
+	},
+	"publicacao": {
+		"estado": "removido",
+		"rodada": 1,
+		"pedido": {
+			"ideia": "E02 (teste do fluxo com imagem gerada): a confraternização que a empresa pagou e não guardou",
+			"pilar": "2. Confraternização",
+			"formato": "post",
+			"quantidade": 1,
+			"proporcao": "feed",
+			"variacoes": 3,
+			"slug": "teste-fluxo-e02",
+			"data": "2026-10-15",
+			"imagens": [
+				{
+					"cena": "a company year-end party at night, a round table of colleagues of clearly different ages and ethnicities (a Black woman in her fifties, a young East Asian man, a gray-haired white man, a Latina woman in her thirties) laughing together, one of them raising a phone toward the stage, seen from behind their shoulders, the phone held so its screen faces away from the camera, the stage itself out of frame so only its warm glow reaches the room"
+				}
+			]
+		},
+		"aprovacoes": [
+			{
+				"rodada": 1,
+				"decisao": "aprovar",
+				"em": "2026-10-15T18:54:01.741Z"
+			}
+		],
+		"historico": [
+			{
+				"em": "2026-10-15T18:44:50.449Z",
+				"evento": "rascunho",
+				"detalhe": "rodada 1"
+			},
+			{
+				"em": "2026-10-15T18:45:11.966Z",
+				"evento": "legenda",
+				"detalhe": "Solicitar proposta corporativa"
+			},
+			{
+				"em": "2026-10-15T18:45:18.285Z",
+				"evento": "hospedado",
+				"detalhe": "1 imagem(ns)"
+			},
+			{
+				"em": "2026-10-15T18:45:22.167Z",
+				"evento": "pergunta",
+				"detalhe": "rodada 1"
+			},
+			{
+				"em": "2026-10-15T18:54:01.741Z",
+				"evento": "aprovar"
+			},
+			{
+				"em": "2026-10-15T18:57:45.080Z",
+				"evento": "facebook",
+				"detalhe": "1351629444696145_122115218835489529 https://www.facebook.com/122115154113489529/posts/122115218835489529"
+			},
+			{
+				"em": "2026-10-15T18:57:45.080Z",
+				"evento": "publicado",
+				"detalhe": "só na Página https://www.facebook.com/122115154113489529/posts/122115218835489529"
+			},
+			{
+				"em": "2026-10-15T19:01:35.485Z",
+				"evento": "removido",
+				"detalhe": "Instagram: apagar à mão no app"
+			}
+		],
+		"legenda": {
+			"arquivo": "legenda.txt",
+			"texto": "A empresa pagou a festa. O buffet, a banda, o salão.\nE as fotos ficaram no celular de cada um.\nPresas em vinte grupos de WhatsApp. Ou em lugar nenhum.\nEm janeiro, a comunicação interna procura a noite e não acha.\nCom o PartyShare, cada foto tirada na mesa vai para o telão do evento e para um álbum só, da empresa.\nSem app para instalar. Com moderação antes de aparecer.\nA noite fica com quem pagou por ela.\n\nSolicitar proposta corporativa: link na bio.\n\n#confraternizacao #festadefimdeano #endomarketing #comunicacaointerna #partyshare",
+			"hashtags": [
+				"#confraternizacao",
+				"#festadefimdeano",
+				"#endomarketing",
+				"#comunicacaointerna",
+				"#partyshare"
+			],
+			"cta": "Solicitar proposta corporativa",
+			"conferidaEm": "2026-10-15T18:45:11.965Z"
+		},
+		"legendaFacebook": {
+			"arquivo": "legenda-facebook.txt",
+			"texto": "A empresa pagou a festa. O buffet, a banda, o salão.\nE as fotos ficaram no celular de cada um, presas em vinte grupos de WhatsApp.\nEm janeiro, a comunicação interna procura a noite e não acha.\nCom o PartyShare, cada foto tirada na mesa vai para o telão do evento e para um álbum só, da empresa. Sem app para instalar. Com moderação antes de aparecer.\n\nSolicitar proposta corporativa: https://www.partyshare.me/business?utm_source=facebook&utm_medium=social&utm_campaign=piloto-corporativo&utm_content=E02\n\n#partyshare #confraternizacao",
+			"conferidaEm": "2026-10-15T18:45:11.966Z"
+		},
+		"midia": [
+			{
+				"arquivo": "final/01.jpg",
+				"url": "https://pub-8aada96df820421db5aec1f59b9207c7.r2.dev/instagram/58560411-01.jpg",
+				"enviadoEm": "2026-10-15T18:45:18.284Z"
+			}
+		],
+		"pergunta": {
+			"feitaEm": "2026-10-15T18:45:22.167Z",
+			"rodada": 1
+		},
+		"cota": {
+			"verificadaEm": "2026-10-15T18:57:37.487Z",
+			"projeto": {
+				"contagem": 0,
+				"limite": 3
+			}
+		},
+		"facebook": {
+			"pageId": "1351629444696145",
+			"postId": "1351629444696145_122115218835489529",
+			"permalink": "https://www.facebook.com/122115154113489529/posts/122115218835489529",
+			"publicadoEm": "2026-10-15T18:57:39+0000"
+		},
+		"removidoEm": "2026-10-15T19:01:35.485Z"
+	}
+}

@@ -1,0 +1,2 @@
+# PNGs brutos do mflux; o script apaga ao terminar, mas sobram se a geração cair no meio.
+projects/*/posts/*/.bruto/

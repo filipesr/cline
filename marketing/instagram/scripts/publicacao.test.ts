@@ -35,6 +35,8 @@ let chamadas: Chamada[] = [];
 let servidor: ReturnType<typeof Bun.serve>;
 let quotaUsage = 0;
 let conexoesAtivas = 2;
+let instagramAtivo = true;
+let paginaFalha = false;
 let pedidosDeConexao: unknown[] = [];
 
 // Assíncrono de propósito: um spawnSync travaria o servidor falso, que roda neste processo.
@@ -189,7 +191,9 @@ beforeAll(() => {
 					successful: true,
 					data: {
 						results: {
-							instagram: conta(conexoesAtivas > 0 ? "active" : "initiated"),
+							instagram: conta(
+								instagramAtivo && conexoesAtivas > 0 ? "active" : "initiated",
+							),
 							facebook: conta(conexoesAtivas > 1 ? "active" : "initiated"),
 						},
 						summary: {
@@ -252,8 +256,24 @@ beforeAll(() => {
 						caption:
 							"A confraternização acontece uma vez.\n\nSolicitar proposta corporativa.\n\n#partyshare #rh #endomarketing",
 					});
+				case "FACEBOOK_LIST_MANAGED_PAGES":
+					return ok({
+						data: [
+							{ id: "1351629444696145", name: "Party Share" },
+							{ id: "999", name: "il Burger" },
+						],
+					});
 				case "FACEBOOK_CREATE_MULTI_PHOTO_POST":
 				case "FACEBOOK_CREATE_PHOTO_POST":
+					if (paginaFalha)
+						return texto({
+							successful: true,
+							data: {
+								results: [
+									{ index: 0, tool_slug: slug, error: "(#200) sem permissão" },
+								],
+							},
+						});
 					return ok({ post_id: "111_222" });
 				case "FACEBOOK_GET_POST":
 					return ok({
@@ -306,6 +326,8 @@ beforeEach(() => {
 	chamadas = [];
 	quotaUsage = 0;
 	conexoesAtivas = 2;
+	instagramAtivo = true;
+	paginaFalha = false;
 	pedidosDeConexao = [];
 	rmSync(POSTS, { recursive: true, force: true });
 });
@@ -331,6 +353,74 @@ describe("conexao", () => {
 		expect(r.codigo).toBe(1);
 		expect(r.erro).toContain("sem conexão ativa no Composio para facebook;");
 		expect(chamadas).toEqual([]);
+	});
+});
+
+describe("só a Página, sem Instagram conectado", () => {
+	test("conexao avisa, não chama o Instagram e fixa a Página com --salvar", async () => {
+		instagramAtivo = false;
+		const arquivo = join(PASTA_PROJETO, "publicacao.json");
+		const antes = readFileSync(arquivo, "utf8");
+		try {
+			const r = await rodar(
+				"conexao",
+				PROJETO,
+				"--salvar",
+				"--pagina",
+				"Party Share",
+			);
+			expect(r.codigo).toBe(0);
+			expect(r.erro).toContain("seguindo só com a Página");
+			expect(chamadas.map((c) => c.slug)).toEqual([
+				"FACEBOOK_LIST_MANAGED_PAGES",
+			]);
+			const config = JSON.parse(readFileSync(arquivo, "utf8"));
+			expect(config.facebook.pageId).toBe("1351629444696145");
+			expect(config.instagram).toEqual(JSON.parse(antes).instagram);
+		} finally {
+			writeFileSync(arquivo, antes);
+		}
+	});
+
+	test("publicar --so-facebook num post aprovado publica só na Página e conta no teto", async () => {
+		const pasta = await criarAprovado("2026-10-22-so-pagina", "post");
+		const r = await rodar("publicar", PROJETO, pasta, "--so-facebook");
+		expect(r.codigo).toBe(0);
+		expect(chamadas.map((c) => c.slug)).toEqual([
+			"FACEBOOK_CREATE_PHOTO_POST",
+			"FACEBOOK_GET_POST",
+		]);
+		const pub = lerPost("2026-10-22-so-pagina").publicacao;
+		expect(pub.estado).toBe("publicado");
+		expect(pub.instagram).toBeUndefined();
+		expect(pub.facebook.postId).toBe("111_222");
+		// O FACEBOOK_GET_POST falso data o post em 22/10 às 20h (horário de Brasília).
+		const cota = await rodar("cota", PROJETO, "--em", "2026-10-22T21:00");
+		expect(cota.saida).toContain("1 publicação(ões) na janela de 24h");
+		const removido = await rodar("remover", PROJETO, pasta);
+		expect(removido.saida).not.toContain("Instagram");
+		expect(lerPost("2026-10-22-so-pagina").publicacao.estado).toBe("removido");
+	});
+
+	test("--so-facebook não pula a aprovação", async () => {
+		const pasta = criarPost("2026-10-22-so-pagina-rascunho", {
+			formato: "post",
+		});
+		const r = await rodar("publicar", PROJETO, pasta, "--so-facebook");
+		expect(r.codigo).not.toBe(0);
+		expect(r.erro).toContain('"rascunho"');
+		expect(chamadas).toEqual([]);
+	});
+
+	test("se a Página falha, o post continua aprovado e o erro fica registrado", async () => {
+		paginaFalha = true;
+		const pasta = await criarAprovado("2026-10-22-so-pagina-falha", "post");
+		const r = await rodar("publicar", PROJETO, pasta, "--so-facebook");
+		expect(r.codigo).toBe(1);
+		expect(r.erro).toContain("a Página não publicou");
+		const pub = lerPost("2026-10-22-so-pagina-falha").publicacao;
+		expect(pub.estado).toBe("aprovado");
+		expect(pub.facebook.erro).toContain("sem permissão");
 	});
 });
 
