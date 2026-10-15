@@ -45,6 +45,7 @@ async function rodar(...args: string[]) {
 			stderr: "pipe",
 			env: {
 				...process.env,
+				INSTAGRAM_ENV_FILE: join(RAIZ, "nao-existe.env"),
 				COMPOSIO_CONSUMER_API_KEY: "ck_teste",
 				COMPOSIO_MCP_URL: `http://localhost:${servidor.port}/mcp`,
 			},

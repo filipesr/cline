@@ -41,7 +41,7 @@ O estado de cada post fica em `post.json → publicacao.estado`:
 
 ### Comandos
 
-Rode tudo de `marketing/instagram/`. O Bun carrega o `.env` dessa pasta sozinho.
+Rode tudo de `marketing/instagram/`. As chaves vêm de `~/.config/cline-marketing/instagram.env` (ver [Onde ficam as chaves](#onde-ficam-as-chaves)).
 
 ```sh
 bun scripts/publicacao.ts conexao    <projeto> [--salvar]        # contas do Composio, @, Página, limite da Meta
@@ -126,7 +126,7 @@ As conexões não passam de um projeto do Composio para outro. O proxy de conect
 | `COMPOSIO_CONSUMER_API_KEY` | composio.dev → **For You → Connect my agent**. É a chave `ck_…` |
 | `COMPOSIO_MCP_URL` | Opcional. O padrão é `https://connect.composio.dev/mcp` |
 
-Ponha os valores em `marketing/instagram/.env`, que está no `.gitignore`. Depois rode:
+Ponha os valores em `~/.config/cline-marketing/instagram.env` (ver [Onde ficam as chaves](#onde-ficam-as-chaves)). Depois rode:
 
 ```sh
 bun scripts/publicacao.ts conexao partyshare                                 # confere: conexões, @, tipo de conta, limite da Meta, Páginas
@@ -160,7 +160,25 @@ O script usa o cliente S3 que já vem no Bun, então não há dependências para
 | `R2_BUCKET` | `cline-marketing-instagram` (opcional quando vem dentro de `S3_API`) |
 | `R2_PUBLIC_BASE_URL` | URL pública do bucket, sem barra no final: `https://pub-<hash>.r2.dev` ou um domínio próprio |
 
-Todas são obrigatórias, a não ser nos casos opcionais indicados. Quando falta alguma, o script lista cada uma e diz onde encontrá-la. Não commite os valores. Ponha num `marketing/instagram/.env`: o `.env` está no `.gitignore` e o Bun carrega o arquivo sozinho quando o comando roda nesta pasta.
+Todas são obrigatórias, a não ser nos casos opcionais indicados. Quando falta alguma, o script lista cada uma e diz onde encontrá-la. Não commite os valores.
+
+#### Onde ficam as chaves
+
+Num arquivo **fora do repositório**: `~/.config/cline-marketing/instagram.env` (ou o caminho em `INSTAGRAM_ENV_FILE`). Cada card do Kanban roda num worktree que é apagado quando o card termina, e um `.env` dentro dele some junto; foi assim que as chaves do R2 se perderam uma vez. `scripts/segredos.ts` lê esse arquivo em `publicacao.ts` e `upload-image.ts`, e o que já estiver no ambiente (ou num `marketing/instagram/.env`) tem precedência.
+
+```sh
+mkdir -p ~/.config/cline-marketing && chmod 700 ~/.config/cline-marketing
+touch ~/.config/cline-marketing/instagram.env && chmod 600 ~/.config/cline-marketing/instagram.env
+```
+
+```sh
+# ~/.config/cline-marketing/instagram.env
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=
+S3_API=
+R2_PUBLIC_BASE_URL=
+COMPOSIO_CONSUMER_API_KEY=
+```
 
 #### Configuração inicial (uma vez)
 

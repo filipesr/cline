@@ -97,7 +97,7 @@ export function criarComposio(opcoes?: {
 	const chave = opcoes?.chave ?? process.env.COMPOSIO_CONSUMER_API_KEY?.trim();
 	if (!chave) {
 		throw new Error(
-			"falta COMPOSIO_CONSUMER_API_KEY (composio.dev → For You → Connect my agent, chave ck_…); ponha em marketing/instagram/.env",
+			"falta COMPOSIO_CONSUMER_API_KEY (composio.dev → For You → Connect my agent, chave ck_…); ponha em ~/.config/cline-marketing/instagram.env",
 		);
 	}
 	const url = opcoes?.url ?? process.env.COMPOSIO_MCP_URL?.trim() ?? MCP_PADRAO;

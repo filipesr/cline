@@ -17,8 +17,8 @@
  *
  * Tudo parte do projeto selecionado: a configuração (projects/<projeto>/publicacao.json), as
  * regras de legenda, as contas conectadas e o histórico que conta para o teto diário são dele, e
- * uma pasta de post fora de projects/<projeto>/posts/ é recusada. Rode de marketing/instagram/,
- * onde o Bun carrega o .env sozinho.
+ * uma pasta de post fora de projects/<projeto>/posts/ é recusada. As chaves vêm de
+ * ~/.config/cline-marketing/instagram.env (ver segredos.ts).
  */
 import {
 	existsSync,
@@ -42,6 +42,9 @@ import {
 	type RegrasLegenda,
 	semAcento,
 } from "./publicacao-regras";
+import { carregarSegredos } from "./segredos";
+
+carregarSegredos();
 
 const RAIZ = resolve(import.meta.dir, "..");
 const IMAGENS = join(import.meta.dir, "imagens.ts");
