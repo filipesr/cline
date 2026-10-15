@@ -1,0 +1,19 @@
+{
+	"schema": 1,
+	"date": "2026-10-08",
+	"utcOffset": "-03:00",
+	"runs": [],
+	"facebook": {
+		"pageId": "1351629444696145",
+		"page": {
+			"day": {
+				"page_media_view": 0,
+				"page_total_media_view_unique": 0,
+				"page_post_engagements": 0,
+				"page_daily_follows_unique": 0,
+				"page_follows": 0,
+				"collectedAt": "2026-10-15T19:51:15.313Z"
+			}
+		}
+	}
+}
