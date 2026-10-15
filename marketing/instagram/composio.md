@@ -52,8 +52,9 @@ Leitura feita em 15/10/2026 com `FACEBOOK_GET_PAGE_DETAILS`, `GET_PAGE_POSTS`, `
 O que dá para fazer nela pelo Composio:
 
 - **Já validado (leitura):** posts, métricas da Página e dos posts, inbox do Messenger, papéis.
-- **A validar quando houver conteúdo:** leitura de comentários (`FACEBOOK_GET_COMMENTS` falhou com erro `#10` na il Burger) e insights por post com dados reais.
-- **Escrita disponível, não testada:** preencher o perfil (`FACEBOOK_UPDATE_PAGE_SETTINGS`); publicar texto/link, foto, várias fotos ou vídeo; **agendar** (`scheduled_publish_time`) e reagendar; editar/apagar posts; responder, ocultar e apagar comentários; enviar mensagens no Messenger (só por consulta periódica, sem triggers).
+- **Validado no teste de 15/10 (ver abaixo):** publicar texto, ler comentários, responder como a Página, ler reações e apagar o post.
+- **A validar quando houver conteúdo:** insights por post com dados reais.
+- **Escrita disponível, ainda não testada:** preencher o perfil (`FACEBOOK_UPDATE_PAGE_SETTINGS`); publicar texto/link, foto, várias fotos ou vídeo; **agendar** (`scheduled_publish_time`) e reagendar; editar/apagar posts; responder, ocultar e apagar comentários; enviar mensagens no Messenger (só por consulta periódica, sem triggers).
 
 Para o Instagram da Party Share: a conta precisa ser **Profissional** (Business/Creator). Vale **ligá-la à Página** na Central de Contas da Meta (inbox unificada, publicação cruzada) e conectá-la no Composio como conta adicional do toolkit `instagram` (o Composio aceita várias contas por toolkit; cada chamada escolhe uma pelo parâmetro `account`).
 
@@ -167,6 +168,37 @@ Todas as chamadas foram de leitura, por `COMPOSIO_MULTI_EXECUTE_TOOL`. O cliente
 | Comentários de um post da Página | `FACEBOOK_GET_COMMENTS` | ❌ Erro `#10`: pede `pages_read_user_content` ou "Page Public Content Access", embora a permissão apareça como concedida |
 | Conversas do Messenger (só IDs) | `FACEBOOK_GET_PAGE_CONVERSATIONS` | ✅ Funciona |
 
+## Teste de escrita na Página da Party Share (15/10/2026)
+
+Um ciclo completo feito com a chave de consumidor (na época em `~/.config/composio/api_key`; hoje em `~/.config/cline-marketing/instagram.env`) pelo endpoint MCP, com o Filipe comentando e curtindo pelo perfil pessoal:
+
+| Etapa | Ação | Argumentos | Resultado |
+|---|---|---|---|
+| Publicar | `FACEBOOK_CREATE_POST` | `page_id: "1351629444696145"`, `message`, `published: true` | ✅ post `1351629444696145_122115160641489529` |
+| Permalink | `FACEBOOK_GET_POST` | `post_id`, `fields: "id,permalink_url"` | ✅ |
+| Ler comentários | `FACEBOOK_GET_COMMENTS` | `object_id: <post_id>`, `filter: "stream"` | ✅ texto, autor e id do comentário |
+| Responder como a Página | `FACEBOOK_CREATE_COMMENT` | `object_id: "<comment_id>"` (só o número), `message` | ✅ resposta com `from` = Party Share |
+| Ver curtida na resposta | `FACEBOOK_GET_COMMENT` | `fields: "id,like_count,reactions.summary(total_count){name,type}"` | ✅ reação LOVE do Filipe |
+| Apagar | `FACEBOOK_DELETE_POST` | `post_id` | ✅ o post, o comentário e a resposta somem; um `GET_POST` depois responde `#10` |
+
+O que o teste ensinou:
+
+- **Responder a um comentário exige o id do comentário sozinho.** O id que `GET_COMMENTS` devolve vem como `<postId>_<commentId>`. Passado assim, a ação lê o `<postId>` como id de Página e recusa: *"The requested Facebook Page with ID … was not found in your managed pages"*. Com só o `<commentId>`, funciona.
+- **`like_count` só conta 👍.** Outras reações (❤️, 😂…) aparecem só em `reactions`. Para "alguém reagiu?", peça `reactions.summary(total_count)`.
+- **O erro `#10` também quer dizer "o objeto não existe".** Depois de apagar o post, `FACEBOOK_GET_POST` respondeu com o mesmo `#10` (*"Object does not exist, cannot be loaded due to missing permission…"*). A falha de `GET_COMMENTS` na il Burger provavelmente não era falta de permissão: na Party Share, ler comentários funcionou.
+- **A chave de consumidor (`ck_`) só funciona pelo MCP** (`connect.composio.dev/mcp`, header `x-consumer-api-key`). Ela não abre a API v3.1, que pede chave de projeto (`ak_`). Cada ação vai por `COMPOSIO_MULTI_EXECUTE_TOOL`, com o id da conta (`facebook_cerago-policy`) em `account`. O resultado volta em `data.results[0].response`.
+- **Cuidado com `COMPOSIO_MANAGE_CONNECTIONS`.** `toolkits` é uma lista de objetos (`[{"name": "facebook", "action": "list"}]`). Passado como lista de nomes, a ação assume `action: "add"` e **abre um pedido de conexão novo**. Foi assim que surgiram, por engano, as conexões pendentes `facebook_arba-tho` e talvez `instagram_gant-gegg` (ver abaixo).
+- **Os parâmetros de data variam de ação para ação.** `FACEBOOK_GET_PAGE_INSIGHTS` exige `since`/`until` como texto (`"1760497200"`). `INSTAGRAM_GET_USER_INSIGHTS` aceita número, mas não aceita `ig_user_id: "me"`: só id numérico ou nada, e nada quer dizer a conta conectada. A demografia (`follower_demographics`) exige `timeframe`, e só `this_week` e `this_month` ainda valem.
+- **Consumo do teste:** 9 execuções de ação (publicar, ler, responder em duas tentativas, conferir, apagar), mais as meta tools de schema e de conexões.
+
+### Conexões pendentes depois do teste
+
+| Toolkit | Id | Status | Origem |
+|---|---|---|---|
+| `facebook` | `facebook_cerago-policy` (alias `filipe.rezende`) | ACTIVE, padrão | A conexão em uso |
+| `facebook` | `facebook_arba-tho` | INITIATED/initializing | Aberta por engano no teste. Pode ser removida (`action: "remove"`) |
+| `instagram` | `instagram_gant-gegg` | INITIATED/initializing | A tentativa anterior ou a aberta por engano. Para conectar a Party Share, gere um link novo |
+
 ## Limitações encontradas
 
 - **Insights por post só existem para mídias publicadas depois da conversão para conta profissional.** Os posts atuais do `@f.s.rezende` são anteriores, então hoje não há insights por post. Os posts novos terão.
@@ -176,7 +208,7 @@ Todas as chamadas foram de leitura, por `COMPOSIO_MULTI_EXECUTE_TOOL`. O cliente
 - **Cota de publicação:** 100 posts por 24h (janela móvel) nesta conta. Dá para ler antes com `GET_IG_USER_CONTENT_PUBLISHING_LIMIT`.
 - **Legenda:** o schema pede `#` codificado como `%23`. Comentários têm no máximo 300 caracteres e 4 hashtags.
 - **O Instagram não está ligado a nenhuma Página.** As ações "via Página" do IG não se aplicam. Se a Página do Facebook for parte da estratégia, vale ligar o `@f.s.rezende` a ela (Central de Contas da Meta).
-- **Comentários de posts da Página do FB falharam** com erro de permissão (`#10`). Precisa ser investigado antes de depender disso. Hipóteses: post de 2018 sem comentários visíveis, ou chamada feita com token de usuário em vez de token da Página.
+- **Comentários de posts da Página do FB falharam** com erro `#10` na il Burger. Na Party Share, ler e responder comentários funcionou (ver o teste acima); o `#10` da il Burger provavelmente vinha do objeto, não da permissão.
 - **A Página "il Burger" está fechada** (último post em 2018), e a "Party Share" tem 0 seguidores. Definir qual Página entra no plano.
 - **Métricas antigas do Facebook foram descontinuadas** em 15/11/2025 (`post_impressions`, `post_clicks`, `post_engaged_users`…). Agora são `post_media_view` e `post_total_media_view_unique`.
 - **Contas pessoais não funcionam.** Os dois toolkits só aceitam IG Business/Creator e Páginas do FB.

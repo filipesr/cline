@@ -3,6 +3,8 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
-		"upload": "bun scripts/upload-image.ts"
+		"upload": "bun scripts/upload-image.ts",
+		"metrics": "bun scripts/metrics.ts",
+		"test": "bun test scripts"
 	}
 }
