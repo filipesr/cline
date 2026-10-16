@@ -5,6 +5,7 @@
  * holds the approval and the daily cap.
  *
  *   bun scripts/social.ts <project> <SLUG> ['<json args>'] [--write]
+ *   bun scripts/social.ts <project> <SLUG> --schema     # the action's parameters (not billed)
  *
  * - The account comes from projects/<project>/publishing.json (instagram/facebook.composioAccount),
  *   so a project never acts on another project's account.
@@ -90,7 +91,10 @@ function fillIds(
 
 const { positionals, values } = parseArgs({
 	allowPositionals: true,
-	options: { write: { type: "boolean", default: false } },
+	options: {
+		write: { type: "boolean", default: false },
+		schema: { type: "boolean", default: false },
+	},
 });
 const [project, slug, rawArgs] = positionals;
 if (!project || !slug)
@@ -114,6 +118,16 @@ if (!toolkit)
 	fail(
 		`${slug}: só ações INSTAGRAM_* e FACEBOOK_*; as meta tools (COMPOSIO_*) não passam por aqui`,
 	);
+if (values.schema) {
+	// Meta tool: Composio does not bill it, so it is not recorded.
+	try {
+		const schemas = await createComposio().schemas([slug]);
+		console.log(JSON.stringify(schemas, null, "\t"));
+	} catch (error) {
+		fail(error instanceof ComposioError ? error.message : String(error));
+	}
+	process.exit(0);
+}
 if (REFUSED[slug]) fail(`${slug} recusada: ${REFUSED[slug]}`);
 if (toolkit === "instagram" && !config.instagram?.igUserId)
 	fail(

@@ -23,6 +23,7 @@
  */
 import {
 	existsSync,
+	mkdirSync,
 	mkdtempSync,
 	readdirSync,
 	readFileSync,
@@ -286,21 +287,26 @@ function initialConfig(): Config {
 }
 
 function init(project: string) {
-	const dir = projectDir(project);
+	if (!/^[a-z0-9][a-z0-9-]*$/.test(project))
+		fail(`nome de projeto inválido: ${project} (minúsculas, números e hífen)`);
+	const dir = join(ROOT, "projects", project);
 	const path = join(dir, "publishing.json");
 	if (existsSync(path))
 		fail(`${rel(path)} já existe; ele não é recriado (edite ou apague antes)`);
-	if (!existsSync(join(dir, "campaign.md")))
-		fail(
-			`o projeto ${project} não tem campaign.md; as regras de legenda saem dele`,
-		);
+	mkdirSync(dir, { recursive: true });
 	writeJson(path, initialConfig());
 	console.log(`Criado ${rel(path)}, com as contas em null.
 Próximos passos:
   1. bun scripts/publishing.ts connection ${project}                       # só lê: contas e Páginas que o Composio enxerga
   2. bun scripts/publishing.ts connection ${project} --save --page "<nome>"  # grava composioAccount, igUserId, username e pageId
+     Antes, confira que o @ do Instagram do passo 1 é deste projeto: o --save grava o Instagram que o Composio devolver
   3. Preencha caption e captionFacebook (hashtags, forbiddenTerms, ctas, link) a partir de campaign.md
   4. Ajuste timezone, utcOffset e dailyLimit se o projeto não for de São Paulo ou tiver outro teto`);
+	// The accounts come first; the campaign may arrive later, and only the caption rules need it.
+	if (!existsSync(join(dir, "campaign.md")))
+		console.warn(
+			`aviso: projects/${project}/campaign.md ainda não existe; as regras de legenda ficam vazias, e nenhum post passa no "caption" até elas serem preenchidas`,
+		);
 }
 
 // ---------------------------------------------------------------------------------------------

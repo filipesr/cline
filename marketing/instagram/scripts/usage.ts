@@ -53,6 +53,13 @@ export function countCalls(client: Composio, count: CallCount): Composio {
 			count.metaTools = meta;
 			return client.connections(toolkits);
 		},
+		async schemas(slugs) {
+			const meta = count.metaTools ?? {};
+			meta.COMPOSIO_GET_TOOL_SCHEMAS =
+				(meta.COMPOSIO_GET_TOOL_SCHEMAS ?? 0) + 1;
+			count.metaTools = meta;
+			return client.schemas(slugs);
+		},
 		async execute(slug, args, account) {
 			count.total++;
 			count.bySlug[slug] = (count.bySlug[slug] ?? 0) + 1;

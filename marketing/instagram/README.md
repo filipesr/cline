@@ -213,7 +213,7 @@ Atenção: para posts de feed, a Graph API do Instagram só aceita JPEG oficialm
 | `facebook` | `espelhar`, a conta e a Página. Sem Página fixada, não há espelho |
 | `caption`, `captionFacebook` | Regras conferidas por `caption`: `maxWords`, `maxEmojis`, `hashtags` (`min`, `max`, `required`, `allowed`, `forbidden`), `forbiddenTerms`, `ctas` e `link` |
 
-Um projeto novo ganha o arquivo com `bun scripts/publishing.ts init <project>`, que exige o `campaign.md` e nunca sobrescreve um `publishing.json` existente. Ele nasce com todos os ids em `null`. Depois, `connection <project>` mostra as contas e as Páginas que o Composio enxerga, e `connection <project> --save --page "<nome>"` grava `composioAccount`, `igUserId`, `username` e `pageId`. As regras de legenda (`caption`, `captionFacebook`) começam vazias e saem do `campaign.md`. Não copie o arquivo de outro projeto: ele traz as contas e os ids do outro.
+Um projeto novo ganha o arquivo com `bun scripts/publishing.ts init <project>`, que cria a pasta do projeto se preciso e nunca sobrescreve um `publishing.json` existente. O `campaign.md` pode chegar depois: sem ele, o `init` só avisa, e nenhum post passa no `caption` até as regras serem preenchidas. Ele nasce com todos os ids em `null`. Depois, `connection <project>` mostra as contas e as Páginas que o Composio enxerga, e `connection <project> --save --page "<nome>"` grava `composioAccount`, `igUserId`, `username` e `pageId`. A Página nunca é escolhida por palpite, mas o Instagram gravado é o que o Composio devolver: confira o @ na saída sem `--save` antes de gravar. As regras de legenda (`caption`, `captionFacebook`) começam vazias e saem do `campaign.md`. Não copie o arquivo de outro projeto: ele traz as contas e os ids do outro.
 
 ### Dependências do fluxo
 
@@ -235,6 +235,7 @@ bun scripts/social.ts partyshare FACEBOOK_GET_PAGE_POSTS '{"page_id":"$pageId","
 bun scripts/social.ts partyshare FACEBOOK_CREATE_COMMENT '{"object_id":"<commentId>","message":"Obrigado!"}' --write
 ```
 
+- **Parâmetros de uma ação:** `bun scripts/social.ts <project> <SLUG> --schema` mostra o esquema que o Composio declara (meta tool, sem custo). Consulte antes de chutar um nome de campo.
 - **Conta e ids do projeto.** A conta vem de `publishing.json` (`instagram`/`facebook.composioAccount`). `"$pageId"` e `"$igUserId"` nos argumentos viram os ids do projeto.
 - **Leitura passa direto; escrita pede `--write`.** Ações `GET_`, `LIST_`, `FETCH_` e `SEARCH_` rodam como estão. Qualquer outra muda algo público (comentário, resposta, curtida, mensagem) e só roda com `--write`.
 - **Publicar não passa por aqui.** Criar, agendar, editar e apagar posts, as ações deprecadas, a administração da Página e as meta tools `COMPOSIO_*` são recusadas com o caminho certo.

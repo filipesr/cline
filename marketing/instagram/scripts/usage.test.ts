@@ -39,6 +39,7 @@ describe("countCalls", () => {
 	test("counts each action, failures included, and meta tools separately", async () => {
 		const fake: Composio = {
 			connections: async () => ({}),
+			schemas: async () => ({}),
 			execute: async (slug) => {
 				if (slug === "BAD") throw new Error("failed");
 				return {};
@@ -47,6 +48,7 @@ describe("countCalls", () => {
 		const count = newCallCount();
 		const c = countCalls(fake, count);
 		await c.connections(["facebook"]);
+		await c.schemas(["FACEBOOK_GET_POST"]);
 		await c.execute("FACEBOOK_GET_POST", {});
 		await c.execute("FACEBOOK_GET_POST", {});
 		await c.execute("BAD", {}).catch(() => {});
@@ -54,7 +56,10 @@ describe("countCalls", () => {
 			total: 3,
 			failed: 1,
 			bySlug: { FACEBOOK_GET_POST: 2, BAD: 1 },
-			metaTools: { COMPOSIO_MANAGE_CONNECTIONS: 1 },
+			metaTools: {
+				COMPOSIO_MANAGE_CONNECTIONS: 1,
+				COMPOSIO_GET_TOOL_SCHEMAS: 1,
+			},
 		});
 	});
 });

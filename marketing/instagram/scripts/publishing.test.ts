@@ -697,13 +697,10 @@ describe("init", () => {
 	afterAll(() => rmSync(otherDir, { recursive: true, force: true }));
 
 	test("creates publishing.json with every account null, and never overwrites it", async () => {
-		mkdirSync(otherDir, { recursive: true });
-		cpSync(
-			join(ROOT, "projects/partyshare/campaign.md"),
-			join(otherDir, "campaign.md"),
-		);
+		// No folder and no campaign.md yet: the accounts come first, the campaign may arrive later.
 		const first = await run("init", other);
 		expect(first.code).toBe(0);
+		expect(first.stderr).toContain("campaign.md");
 		const config = JSON.parse(
 			readFileSync(join(otherDir, "publishing.json"), "utf8"),
 		);

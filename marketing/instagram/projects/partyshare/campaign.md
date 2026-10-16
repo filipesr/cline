@@ -144,7 +144,7 @@ Para a pergunta "Quanto custa?", a resposta é: "Depende do tamanho e do tempo d
 
 Esta seção é a base de todo prompt de imagem.
 - As imagens **não são feitas em HTML/CSS**.
-- O motor de imagem é o **FLUX.2 klein 4B**, rodando neste Mac via mflux (`scripts/imagens.ts`, detalhes em `scripts/README.md`). O prompt é em linguagem natural, sem sintaxe de ferramenta (nada de `--ar` ou `--style`): formato e tamanho saem do script.
+- O motor de imagem é o **FLUX.2 klein 4B**, rodando neste Mac via mflux (`scripts/images.ts`, detalhes em `scripts/README.md`). O prompt é em linguagem natural, sem sintaxe de ferramenta (nada de `--ar` ou `--style`): formato e tamanho saem do script.
 
 ### Estilo
 
@@ -198,7 +198,7 @@ diverse adults in smart-casual clothes, genuine laughter, no posed studio look, 
 Avoid: visible text, app store screens, fake dashboards, stock-photo smiles.
 ```
 
-**Cards tipográficos**, sem foto: o texto vai à parte, numa lista de "headline / subtítulo / CTA", com a paleta e a tipografia acima. O agente não renderiza o card. Quem monta é a etapa de edição: `scripts/imagens.ts` sempre pede imagens sem texto.
+**Cards tipográficos**, sem foto: o texto vai à parte, numa lista de "headline / subtítulo / CTA", com a paleta e a tipografia acima. O agente não renderiza o card. Quem monta é a etapa de edição: `scripts/images.ts` sempre pede imagens sem texto.
 
 ## 10. Calendário: próximas 4 semanas (19/out – 15/nov)
 
@@ -249,11 +249,11 @@ Avoid: visible text, app store screens, fake dashboards, stock-photo smiles.
 ## 11. Em aberto
 
 Já decidido (15/out/2026):
-- **Página do Facebook:** Party Share (`1351629444696145`), fixada em `publicacao.json`.
+- **Página do Facebook:** Party Share (`1351629444696145`), fixada em `publishing.json`.
 - **Motor de imagem:** FLUX.2 klein 4B local via mflux (seção 9).
 
 As decisões abaixo são do dono do produto. Enquanto não forem tomadas, o agente não as presume.
-- O @ oficial no Instagram. A conta da Party Share ainda não está conectada no Composio; o doc de lançamento usava "@partyshare" como provisório. Quando conectar, `bun scripts/publicacao.ts conexao partyshare --salvar` grava o @ em `publicacao.json`.
+- O @ oficial no Instagram. A conta da Party Share ainda não está conectada no Composio; o doc de lançamento usava "@partyshare" como provisório. Quando conectar, `bun scripts/publishing.ts connection partyshare --save` grava o @ em `publishing.json`.
 - A cidade ou as cidades do piloto. Isso define a hashtag local e onde as fotos de bastidor são feitas.
 - Quem grava as cenas reais do telão e em que ensaio.
 - Gravar o UTM na inscrição de /business ou instalar o Pixel da Meta, para medir post a post.

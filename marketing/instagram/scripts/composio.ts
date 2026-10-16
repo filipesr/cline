@@ -26,6 +26,8 @@ export class ComposioError extends Error {
 export type Composio = {
 	/** What Composio says about these toolkits' connections, as it came. */
 	connections(toolkits: string[]): Promise<unknown>;
+	/** The input schema of each action, from COMPOSIO_GET_TOOL_SCHEMAS (a meta tool: not billed). */
+	schemas(slugs: string[]): Promise<unknown>;
 	/** `account` picks among several accounts of the same toolkit, when Composio accepts it. */
 	execute(
 		slug: string,
@@ -212,6 +214,21 @@ export function createComposio(options?: {
 				"COMPOSIO_MANAGE_CONNECTIONS",
 				'o esquema não tem "action"; sem ela a chamada abriria conexões novas em vez de listar',
 			);
+		},
+
+		async schemas(slugs) {
+			const properties =
+				(await init()).get("COMPOSIO_GET_TOOL_SCHEMAS")?.properties ?? {};
+			// The list of slugs has had more than one name; use whichever the server declares.
+			const field = ["tool_slugs", "tools", "slugs"].find(
+				(f) => f in properties,
+			);
+			if (!field)
+				throw new ComposioError(
+					"COMPOSIO_GET_TOOL_SCHEMAS",
+					`esquema inesperado: ${Object.keys(properties).join(", ") || "sem campos"}`,
+				);
+			return meta("COMPOSIO_GET_TOOL_SCHEMAS", { [field]: slugs });
 		},
 
 		async execute(slug, args, account) {
