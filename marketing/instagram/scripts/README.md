@@ -31,24 +31,24 @@ Tempo médio no uso real, medido nos 2 posts do `exemplo-cline` (12 imagens com 
 
 ## Como rodar
 
-Tudo é por projeto, em `marketing/instagram/projects/<projeto>/`: `campaign.md` (com a seção `## Direção visual`), `persona.md`, `contexto.md`, `assets/` e `posts/`. Nada é lido de outro projeto, e o script recusa um 4º post na mesma data.
+Tudo é por projeto, em `marketing/instagram/projects/<project>/`: `campaign.md` (com a seção `## Direção visual`), `persona.md`, `context.md`, `assets/` e `posts/`. Nada é lido de outro projeto, e o script recusa um 4º post na mesma data.
 
-1. **Pedido**: um JSON com `ideia`, `pilar`, `formato` (`post` | `carrossel` | `story`), `quantidade`, opcionalmente `proporcao` (`feed` 1080x1350 | `quadrado` 1080x1080; story é sempre 1080x1920), `variacoes` (padrão 3), `slug`, `data`, `seeds` e `referencias` (nomes em `assets/`; omitido = todos, `[]` = nenhum). Exemplos em `projects/exemplo-cline/pedidos/`.
-2. **Brief**: o agente lê a campanha, a persona, a direção visual e os assets do projeto e escreve uma `cena` em inglês por imagem no pedido:
+1. **Pedido**: um JSON com `idea`, `pillar`, `format` (`post` | `carousel` | `story`), `count`, opcionalmente `aspect` (`feed` 1080x1350 | `square` 1080x1080; story é sempre 1080x1920), `variations` (padrão 3), `slug`, `date`, `seeds` e `references` (nomes em `assets/`; omitido = todos, `[]` = nenhum). Exemplos em `projects/exemplo-cline/requests/`.
+2. **Brief**: o agente lê a campanha, a persona, a direção visual e os assets do projeto e escreve uma `scene` em inglês por imagem no pedido:
    ```sh
-   bun marketing/instagram/scripts/imagens.ts brief exemplo-cline marketing/instagram/projects/exemplo-cline/pedidos/do-pedido-a-mudanca.json
+   bun marketing/instagram/scripts/images.ts brief exemplo-cline marketing/instagram/projects/exemplo-cline/requests/do-pedido-a-mudanca.json
    ```
-3. **Gerar**: o prompt final é `cena` + regra de fidelidade às referências + continuidade de carrossel + o estilo da direção visual + "sem texto". O estilo sai de um bloco `` ```prompt `` na seção "Direção visual" (numerada ou não) ou, como no PartyShare, de um bloco-modelo com `[CENA: …]`: a cena entra no lugar dele, `[FORMATO: …]` vira a proporção e `[top|bottom]` fica com a primeira opção.
+3. **Gerar**: o prompt final é `scene` + regra de fidelidade às referências + continuidade de carrossel + o estilo da direção visual + "sem texto". O estilo sai de um bloco `` ```prompt `` na seção "Direção visual" (numerada ou não) ou, como no PartyShare, de um bloco-modelo com `[CENA: …]`: a cena entra no lugar dele, `[FORMATO: …]` vira a proporção e `[top|bottom]` fica com a primeira opção.
    ```sh
-   bun marketing/instagram/scripts/imagens.ts gerar exemplo-cline marketing/instagram/projects/exemplo-cline/pedidos/do-pedido-a-mudanca.json
+   bun marketing/instagram/scripts/images.ts generate exemplo-cline marketing/instagram/projects/exemplo-cline/requests/do-pedido-a-mudanca.json
    ```
    Com fotos ou prints em `assets/`, usa `mflux-generate-flux2-edit --image-paths` (até 3 referências) para o produto não ser inventado. Num carrossel, todos os slides usam as mesmas seeds e referências, então `v2` de todos os slides forma um conjunto coerente. O resultado fica em `posts/<data>-<slug>/`: `NN-vK.jpg`, `prompts/NN.txt` e `post.json` com seeds, parâmetros, hash das fontes e o comando exato de cada variação (rodado em `marketing/instagram/`, refaz a imagem igual).
-4. **Revisar**: monta `revisao.jpg` (folha de contato) e lista os critérios de descarte. O agente abre as variações, compara com `assets/` e escolhe:
+4. **Revisar**: monta `contact-sheet.jpg` (folha de contato) e lista os critérios de descarte. O agente abre as variações, compara com `assets/` e escolhe:
    ```sh
-   bun marketing/instagram/scripts/imagens.ts revisar exemplo-cline <pasta-do-post>
-   bun marketing/instagram/scripts/imagens.ts escolher exemplo-cline <pasta-do-post> \
-     --escolha v2 --motivo "..." --descartar "01-v1=motivo" --descartar "01-v3=motivo"
+   bun marketing/instagram/scripts/images.ts review exemplo-cline <post-dir>
+   bun marketing/instagram/scripts/images.ts choose exemplo-cline <post-dir> \
+     --pick v2 --reason "..." --reject "01-v1=motivo" --reject "01-v3=motivo"
    ```
-   `--escolha` aceita `v2` (todas as imagens) ou `01=v2,02=v2,03=v1`. A escolha, o motivo e os descartes vão para `post.json`, e as imagens escolhidas são copiadas para `final/NN.jpg`, conferidas como JPEG sRGB, abaixo de 8 MB e nas dimensões exatas.
+   `--pick` aceita `v2` (todas as imagens) ou `01=v2,02=v2,03=v1`. A escolha, o motivo e os descartes vão para `post.json`, e as imagens escolhidas são copiadas para `final/NN.jpg`, conferidas como JPEG sRGB, abaixo de 8 MB e nas dimensões exatas.
 
-Para refazer um post com as mesmas seeds: adicione `"seeds": [...]` ao pedido (copiadas do `post.json`) e rode `gerar ... --forcar`.
+Para refazer um post com as mesmas seeds: adicione `"seeds": [...]` ao pedido (copiadas do `post.json`) e rode `generate ... --force`.

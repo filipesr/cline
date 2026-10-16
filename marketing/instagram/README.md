@@ -2,10 +2,10 @@
 
 Os posts saem do calendário de um projeto e vão ao Instagram e à Página do Facebook pelo Composio, depois de aprovados pelo Telegram.
 
-Tudo é **por projeto**. Cada `projects/<projeto>/` tem os seus próprios arquivos, e nada de um projeto vale para outro:
+Tudo é **por projeto**. Cada `projects/<project>/` tem os seus próprios arquivos, e nada de um projeto vale para outro:
 
 - `campaign.md`: campanha, persona, tom e calendário
-- `publicacao.json`: contas, teto diário e regras de legenda
+- `publishing.json`: contas, teto diário e regras de legenda
 - `posts/`: o histórico de posts
 
 Os scripts recusam uma pasta de post que não esteja dentro do projeto informado.
@@ -24,38 +24,38 @@ calendário do projeto ──► rascunho ──► legenda ──► hospedar �
                                                                                   ─► media id + permalink no post.json
 ```
 
-O estado de cada post fica em `post.json → publicacao.estado`:
+O estado de cada post fica em `post.json → publishing.state`:
 
 | Estado | Como se chega | O que vem depois |
 |---|---|---|
-| `rascunho` | `rascunho`, ou `refazer` depois de um ajuste | `legenda`, `hospedar`, `pergunta` |
-| `aguardando_aprovacao` | `pergunta` | `decisao` |
-| `ajuste` | `decisao "Pedir ajuste" --comentario` | `refazer` |
-| `aprovado` | `decisao Aprovar` | `publicar` |
-| `agendado` | `publicar --empurrar`, com o teto atingido | `publicar` de novo no horário marcado |
-| `publicado` | `publicar` | `remover` (só no post de teste) |
-| `descartado` | `decisao Descartar` | — |
-| `removido` | `remover` | — |
+| `draft` | `draft`, ou `redo` depois de um ajuste | `caption`, `host`, `question` |
+| `awaiting_approval` | `question` | `decision` |
+| `changes_requested` | `decision "Pedir ajuste" --comment` | `redo` |
+| `approved` | `decision Aprovar` | `publish` |
+| `scheduled` | `publish --reschedule`, com o teto atingido | `publish` de novo no horário marcado |
+| `published` | `publish` | `remove` (só no post de teste) |
+| `discarded` | `decision Descartar` | — |
+| `removed` | `remove` | — |
 
-`publicar` só aceita um post `aprovado` ou `agendado` cuja rodada atual tenha um "Aprovar" registrado. Um rascunho nunca vai ao ar sem passar pela pergunta.
+`publish` só aceita um post `approved` ou `scheduled` cuja rodada atual tenha um "Aprovar" registrado. Um rascunho nunca vai ao ar sem passar pela pergunta.
 
 ### Comandos
 
 Rode tudo de `marketing/instagram/`. As chaves vêm de `~/.config/cline-marketing/instagram.env` (ver [Onde ficam as chaves](#onde-ficam-as-chaves)).
 
 ```sh
-bun scripts/publicacao.ts conexao    <projeto> [--salvar]        # contas do Composio, @, Página, limite da Meta
-bun scripts/publicacao.ts calendario <projeto> [--data AAAA-MM-DD]
-bun scripts/publicacao.ts rascunho   <projeto> <pedido.json>     # gera as imagens pelo motor do projeto
-bun scripts/publicacao.ts legenda    <projeto> <pasta-do-post>   # confere legenda.txt (e legenda-facebook.txt)
-bun scripts/publicacao.ts hospedar   <projeto> <pasta-do-post>   # envia final/*.jpg e guarda as URLs públicas
-bun scripts/publicacao.ts pergunta   <projeto> <pasta-do-post>   # imprime o AskUserQuestion do card
-bun scripts/publicacao.ts decisao    <projeto> <pasta-do-post> <Aprovar|Pedir ajuste|Descartar> [--comentario "..."]
-bun scripts/publicacao.ts refazer    <projeto> <pasta-do-post> [--pedido novo.json] [--so-legenda]
-bun scripts/publicacao.ts cota       <projeto> [--em AAAA-MM-DDTHH:MM]
-bun scripts/publicacao.ts publicar   <projeto> <pasta-do-post> [--empurrar] [--so-facebook]
-bun scripts/publicacao.ts remover    <projeto> <pasta-do-post>
-bun scripts/publicacao.ts estado     <projeto> <pasta-do-post>
+bun scripts/publishing.ts connection    <project> [--save]        # contas do Composio, @, Página, limite da Meta
+bun scripts/publishing.ts calendar <project> [--date YYYY-MM-DD]
+bun scripts/publishing.ts draft   <project> <request.json>     # gera as imagens pelo motor do projeto
+bun scripts/publishing.ts caption    <project> <post-dir>   # confere caption.txt (e caption-facebook.txt)
+bun scripts/publishing.ts host   <project> <post-dir>   # envia final/*.jpg e guarda as URLs públicas
+bun scripts/publishing.ts question   <project> <post-dir>   # imprime o AskUserQuestion do card
+bun scripts/publishing.ts decision    <project> <post-dir> <Aprovar|Pedir ajuste|Descartar> [--comment "..."]
+bun scripts/publishing.ts redo    <project> <post-dir> [--request new.json] [--caption-only]
+bun scripts/publishing.ts quota       <project> [--at YYYY-MM-DDTHH:MM]
+bun scripts/publishing.ts publish   <project> <post-dir> [--reschedule] [--facebook-only]
+bun scripts/publishing.ts remove    <project> <post-dir>
+bun scripts/publishing.ts status     <project> <post-dir>
 bun test scripts                                                  # regras + fluxo contra um Composio falso
 ```
 
@@ -63,40 +63,40 @@ bun test scripts                                                  # regras + flu
 
 O passo a passo é escrito para o agente do card do Kanban, mas também pode ser rodado à mão. `P` é o projeto, por exemplo `partyshare`, e `D` é a pasta do post, `projects/P/posts/<data>-<slug>`.
 
-1. **Escolher o item.** Rode `bun scripts/publicacao.ts calendario P --data 2026-10-22` para ver as linhas do calendário do dia. Cada linha traz pilar, formato, ideia, CTA e o código, como E02. Esta fase publica **post** e **carrossel**. Stories e Reels ficam de fora.
+1. **Escolher o item.** Rode `bun scripts/publishing.ts calendar P --date 2026-10-22` para ver as linhas do calendário do dia. Cada linha traz pilar, formato, ideia, CTA e o código, como E02. Esta fase publica **post** e **carrossel**. Stories e Reels ficam de fora.
 2. **Rascunho.**
    - Leia `projects/P/campaign.md`. Ele traz o tom, a persona, a direção visual e o que nunca dizer.
-   - Rode `bun scripts/imagens.ts brief P <pedido.json>`.
-   - Escreva o pedido. Ele tem os campos de `imagens.ts` (`ideia`, `pilar`, `formato`, `quantidade`, `imagens[].cena`) e também `slug` e `data`, que são obrigatórios aqui.
-   - Rode `bun scripts/publicacao.ts rascunho P <pedido.json>`. As imagens vêm do motor de imagens do projeto, `scripts/imagens.ts`, e não de HTML/CSS.
-   - Para revisar as variações e marcar a escolhida, rode `bun scripts/imagens.ts revisar P D` e `bun scripts/imagens.ts escolher P D --escolha … --motivo …`. A escolhida vai para `D/final/NN.jpg`.
+   - Rode `bun scripts/images.ts brief P <request.json>`.
+   - Escreva o pedido. Ele tem os campos de `images.ts` (`idea`, `pillar`, `format`, `count`, `images[].scene`) e também `slug` e `date`, que são obrigatórios aqui.
+   - Rode `bun scripts/publishing.ts draft P <request.json>`. As imagens vêm do motor de imagens do projeto, `scripts/images.ts`, e não de HTML/CSS.
+   - Para revisar as variações e marcar a escolhida, rode `bun scripts/images.ts review P D` e `bun scripts/images.ts choose P D --pick … --reason …`. A escolhida vai para `D/final/NN.jpg`.
 3. **Legenda.**
-   - Escreva `D/legenda.txt` no tom da campanha: um único CTA e as hashtags no fim.
-   - Se o projeto espelha na Página, escreva também `D/legenda-facebook.txt`, com no máximo 2 hashtags e o link com `utm_source=facebook`.
-   - Rode `bun scripts/publicacao.ts legenda P D`. Ele confere as legendas contra `publicacao.json`: limites de palavras e emojis, de 3 a 5 hashtags no fim e só da lista, `#partyshare`, termos proibidos e exatamente um CTA. Ele aponta cada regra quebrada, e o post não avança enquanto houver erro.
-4. **Hospedar.** Rode `bun scripts/publicacao.ts hospedar P D`. Ele envia cada `final/NN.jpg` pelo `scripts/upload-image.ts --check` e guarda as URLs públicas no `post.json`.
+   - Escreva `D/caption.txt` no tom da campanha: um único CTA e as hashtags no fim.
+   - Se o projeto espelha na Página, escreva também `D/caption-facebook.txt`, com no máximo 2 hashtags e o link com `utm_source=facebook`.
+   - Rode `bun scripts/publishing.ts caption P D`. Ele confere as legendas contra `publishing.json`: limites de palavras e emojis, de 3 a 5 hashtags no fim e só da lista, `#partyshare`, termos proibidos e exatamente um CTA. Ele aponta cada regra quebrada, e o post não avança enquanto houver erro.
+4. **Hospedar.** Rode `bun scripts/publishing.ts host P D`. Ele envia cada `final/NN.jpg` pelo `scripts/upload-image.ts --check` e guarda as URLs públicas no `post.json`.
 5. **Aprovação pelo Telegram.**
-   - Rode `bun scripts/publicacao.ts pergunta P D`. A saída é o JSON de um `AskUserQuestion` que o agente usa tal como está.
+   - Rode `bun scripts/publishing.ts question P D`. A saída é o JSON de um `AskUserQuestion` que o agente usa tal como está.
    - A pergunta traz a legenda inteira e as imagens como `![](caminho absoluto)`, com as opções **Aprovar / Pedir ajuste / Descartar**.
    - O Kanban tira as imagens do texto e as manda no aviso do hub. O conector do Telegram mostra a foto com os botões embaixo, ou o álbum seguido da pergunta, quando é carrossel.
-   - Com a resposta, rode `bun scripts/publicacao.ts decisao P D <resposta>`.
+   - Com a resposta, rode `bun scripts/publishing.ts decision P D <answer>`.
 6. **Pedir ajuste.**
    - O agente encerra o turno com "Responda a este card com o que ajustar". O Telegram só aceita a resposta de uma pergunta com opções quando ela é uma das opções, então o comentário chega numa resposta de texto ao card, que entra no card como a próxima instrução.
-   - Com o comentário, rode `decisao P D "Pedir ajuste" --comentario "<texto>"`.
-   - Para refazer, rode `refazer P D`. Use `--pedido novo.json` quando a cena mudou, ou `--so-legenda`. Isso abre a rodada seguinte, volta ao passo 2 ou 3 e pergunta de novo. A pergunta nova mostra o ajuste pedido.
-7. **Publicar.** Rode `bun scripts/publicacao.ts publicar P D`, só depois de "Aprovar". Na ordem, ele:
-   1. conta os posts **publicados e agendados do projeto** numa janela de 24h, que inclui os agendados à frente. Se já houver 3, ele recusa e mostra o próximo dia livre. Com `--empurrar`, o post fica `agendado` para o mesmo horário do dia seguinte, ou do próximo dia que couber. Um carrossel conta como uma publicação, e o espelho na Página não conta à parte;
+   - Com o comentário, rode `decision P D "Pedir ajuste" --comment "<texto>"`.
+   - Para refazer, rode `redo P D`. Use `--request new.json` quando a cena mudou, ou `--caption-only`. Isso abre a rodada seguinte, volta ao passo 2 ou 3 e pergunta de novo. A pergunta nova mostra o ajuste pedido.
+7. **Publicar.** Rode `bun scripts/publishing.ts publish P D`, só depois de "Aprovar". Na ordem, ele:
+   1. conta os posts **publicados e agendados do projeto** numa janela de 24h, que inclui os agendados à frente. Se já houver 3, ele recusa e mostra o próximo dia livre. Com `--reschedule`, o post fica `scheduled` para o mesmo horário do dia seguinte, ou do próximo dia que couber. Um carrossel conta como uma publicação, e o espelho na Página não conta à parte;
    2. lê o `content_publishing_limit` da conta (`INSTAGRAM_GET_IG_USER_CONTENT_PUBLISHING_LIMIT`) e recusa se `quota_usage` tiver chegado a `quota_total`;
    3. cria os containers:
       - **post:** `INSTAGRAM_POST_IG_USER_MEDIA` com `image_url` e `caption`;
       - **carrossel:** um `INSTAGRAM_CREATE_CAROUSEL_CONTAINER` só, com os slides em `child_image_urls` e a legenda;
       - depois chama `INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH`, que espera o container ficar pronto (`max_wait_seconds`). O `INSTAGRAM_GET_POST_STATUS` está deprecado;
-   4. lê o permalink (`INSTAGRAM_GET_IG_MEDIA`) e grava `instagram.mediaId`, `permalink`, `publicadoEm` e os ids dos containers no `post.json`. Também compara a legenda publicada com a aprovada e avisa se diferirem;
-   5. espelha na Página, se `facebook.espelhar` estiver ligado e a Página estiver fixada: `FACEBOOK_CREATE_PHOTO_POST` para post, `FACEBOOK_CREATE_MULTI_PHOTO_POST` para carrossel, e depois `FACEBOOK_GET_POST` para o `permalink_url`. Se a Página falhar, o Instagram continua publicado, e a nova tentativa é `publicar --so-facebook`.
+   4. lê o permalink (`INSTAGRAM_GET_IG_MEDIA`) e grava `instagram.mediaId`, `permalink`, `publishedAt` e os ids dos containers no `post.json`. Também compara a legenda publicada com a aprovada e avisa se diferirem;
+   5. espelha na Página, se `facebook.mirror` estiver ligado e a Página estiver fixada: `FACEBOOK_CREATE_PHOTO_POST` para post, `FACEBOOK_CREATE_MULTI_PHOTO_POST` para carrossel, e depois `FACEBOOK_GET_POST` para o `permalink_url`. Se a Página falhar, o Instagram continua publicado, e a nova tentativa é `publish --facebook-only`.
 
-**Só na Página, sem Instagram.** Enquanto o Instagram não está conectado no Composio, `conexao` avisa e segue só com o Facebook. Fixe a Página com `conexao P --salvar --pagina "Party Share"`. Num post `aprovado`, `publicar P D --so-facebook` publica só na Página, com as mesmas travas: precisa do "Aprovar" da rodada e cabe no teto de 3 por 24h, e o post publicado só na Página conta nesse teto. Se a Página falhar, o post continua `aprovado` e o erro fica em `facebook.erro`. Num post já `publicado`, a mesma flag só refaz o espelho.
+**Só na Página, sem Instagram.** Enquanto o Instagram não está conectado no Composio, `connection` avisa e segue só com o Facebook. Fixe a Página com `connection P --save --page "Party Share"`. Num post `approved`, `publish P D --facebook-only` publica só na Página, com as mesmas travas: precisa do "Aprovar" da rodada e cabe no teto de 3 por 24h, e o post publicado só na Página conta nesse teto. Se a Página falhar, o post continua `approved` e o erro fica em `facebook.error`. Num post já `published`, a mesma flag só refaz o espelho.
 
-O agendamento recorrente automático está fora desta fase. Um post `agendado` vai ao ar quando alguém roda `publicar` de novo no horário marcado, à mão ou por um card.
+O agendamento recorrente automático está fora desta fase. Um post `scheduled` vai ao ar quando alguém roda `publish` de novo no horário marcado, à mão ou por um card.
 
 ### Prompt do card de um post
 
@@ -104,10 +104,10 @@ Para criar o card de um item do calendário:
 
 ```sh
 kanban task create --project-path <repo> --title "partyshare: post E02 (22/out)" --tags instagram,partyshare --prompt "$(cat <<'EOF'
-Projeto selecionado: partyshare. Use só marketing/instagram/projects/partyshare/ (campanha, persona, publicacao.json, posts); nada de outro projeto.
-Item do calendário: 2026-10-22, E02 (bun scripts/publicacao.ts calendario partyshare --data 2026-10-22).
+Projeto selecionado: partyshare. Use só marketing/instagram/projects/partyshare/ (campanha, persona, publishing.json, posts); nada de outro projeto.
+Item do calendário: 2026-10-22, E02 (bun scripts/publishing.ts calendar partyshare --date 2026-10-22).
 Siga marketing/instagram/README.md → "Passo a passo de um post", do passo 1 ao 7, rodando os comandos de marketing/instagram/.
-Na aprovação, faça a pergunta exatamente com o JSON de "publicacao.ts pergunta". Publique só depois de "Aprovar".
+Na aprovação, faça a pergunta exatamente com o JSON de "publishing.ts question". Publique só depois de "Aprovar".
 Pronto quando o post.json tiver instagram.mediaId e permalink (e facebook.postId, se o projeto espelha), ou estiver descartado.
 EOF
 )"
@@ -131,13 +131,13 @@ As conexões não passam de um projeto do Composio para outro. O proxy de conect
 Ponha os valores em `~/.config/cline-marketing/instagram.env` (ver [Onde ficam as chaves](#onde-ficam-as-chaves)). Depois rode:
 
 ```sh
-bun scripts/publicacao.ts conexao partyshare                                 # confere: conexões, @, tipo de conta, limite da Meta, Páginas
-bun scripts/publicacao.ts conexao partyshare --salvar --pagina "Party Share" # fixa ig_user_id, @ e Página em projects/partyshare/publicacao.json
+bun scripts/publishing.ts connection partyshare                                 # confere: conexões, @, tipo de conta, limite da Meta, Páginas
+bun scripts/publishing.ts connection partyshare --save --page "Party Share" # fixa ig_user_id, @ e Página em projects/partyshare/publishing.json
 ```
 
-A conta tem mais de uma Página (Party Share e il Burger). A do projeto é a já fixada, a ligada ao Instagram ou a que `--pagina` nomear. O script nunca escolhe por palpite.
+A conta tem mais de uma Página (Party Share e il Burger). A do projeto é a já fixada, a ligada ao Instagram ou a que `--page` nomear. O script nunca escolhe por palpite.
 
-Quando houver mais de uma conta do mesmo toolkit, `contaComposio` escolhe a do projeto e vai no campo `account` da execução. Os ids que ficam no `publicacao.json` (`igUserId`, `pageId`, `contaComposio`) não são segredos. Eles são o que impede um projeto de publicar na conta de outro.
+Quando houver mais de uma conta do mesmo toolkit, `composioAccount` escolhe a do projeto e vai no campo `account` da execução. Os ids que ficam no `publishing.json` (`igUserId`, `pageId`, `composioAccount`) não são segredos. Eles são o que impede um projeto de publicar na conta de outro.
 
 ### Hospedagem das imagens (Cloudflare R2)
 
@@ -166,7 +166,7 @@ Todas são obrigatórias, a não ser nos casos opcionais indicados. Quando falta
 
 #### Onde ficam as chaves
 
-Num arquivo **fora do repositório**: `~/.config/cline-marketing/instagram.env` (ou o caminho em `INSTAGRAM_ENV_FILE`). Cada card do Kanban roda num worktree que é apagado quando o card termina, e um `.env` dentro dele some junto; foi assim que as chaves do R2 se perderam uma vez. `scripts/segredos.ts` lê esse arquivo em `publicacao.ts` e `upload-image.ts`, e o que já estiver no ambiente (ou num `marketing/instagram/.env`) tem precedência.
+Num arquivo **fora do repositório**: `~/.config/cline-marketing/instagram.env` (ou o caminho em `INSTAGRAM_ENV_FILE`). Cada card do Kanban roda num worktree que é apagado quando o card termina, e um `.env` dentro dele some junto; foi assim que as chaves do R2 se perderam uma vez. `scripts/secrets.ts` lê esse arquivo em `publishing.ts` e `upload-image.ts`, e o que já estiver no ambiente (ou num `marketing/instagram/.env`) tem precedência.
 
 ```sh
 mkdir -p ~/.config/cline-marketing && chmod 700 ~/.config/cline-marketing
@@ -199,23 +199,23 @@ O script aceita `.png`, `.jpg` e `.jpeg` até 8 MB, que é o limite do Instagram
 
 Atenção: para posts de feed, a Graph API do Instagram só aceita JPEG oficialmente. Prefira `.jpg`; PNG serve para a Página do Facebook.
 
-### `projects/<projeto>/publicacao.json`
+### `projects/<project>/publishing.json`
 
 | Campo | Para quê |
 |---|---|
-| `fusoHorario`, `offset` | Leitura de `--em AAAA-MM-DDTHH:MM` e horários na saída. O PartyShare usa `America/Sao_Paulo` e `-03:00` |
-| `limitePorDia` | Teto de publicações do projeto em 24h. Hoje é 3 |
-| `instagram` | Conta conectada no Composio, `ig_user_id` e @. Preenchido por `conexao --salvar` |
+| `timezone`, `utcOffset` | Leitura de `--at YYYY-MM-DDTHH:MM` e horários na saída. O PartyShare usa `America/Sao_Paulo` e `-03:00` |
+| `dailyLimit` | Teto de publicações do projeto em 24h. Hoje é 3 |
+| `instagram` | Conta conectada no Composio, `ig_user_id` e @. Preenchido por `connection --save` |
 | `facebook` | `espelhar`, a conta e a Página. Sem Página fixada, não há espelho |
-| `legenda`, `legendaFacebook` | Regras conferidas por `legenda`: `maxPalavras`, `maxEmojis`, `hashtags` (`min`, `max`, `obrigatorias`, `permitidas`, `proibidas`), `termosProibidos`, `ctas` e `link` |
+| `caption`, `captionFacebook` | Regras conferidas por `caption`: `maxWords`, `maxEmojis`, `hashtags` (`min`, `max`, `required`, `allowed`, `forbidden`), `forbiddenTerms`, `ctas` e `link` |
 
-Um projeto novo começa com uma cópia do `publicacao.json` de outro projeto. As regras de legenda dessa cópia têm de ser trocadas pelas da campanha do projeto novo.
+Um projeto novo começa com uma cópia do `publishing.json` de outro projeto. As regras de legenda dessa cópia têm de ser trocadas pelas da campanha do projeto novo.
 
 ### Dependências do fluxo
 
 | Peça | Onde | Card |
 |---|---|---|
-| Motor de imagens (FLUX.2 klein via mflux) | `scripts/imagens.ts`, `scripts/imagens_pixels.py` | da0c0 |
+| Motor de imagens (FLUX.2 klein via mflux) | `scripts/images.ts`, `scripts/images_pixels.py` | da0c0 |
 | Hospedagem pública (Cloudflare R2) | `scripts/upload-image.ts` e as variáveis `R2_*` | 88547, já no main |
 | Foto na pergunta do card, no Telegram | `HubUINotifyPayload.images` e o adapter do Telegram, neste repo | — |
 | Foto na pergunta do card, no Kanban | Kanban, branch `feat/question-images`: tira as `![](…)` do `AskUserQuestion` e as manda no aviso | — |
@@ -224,13 +224,13 @@ Para o Telegram mostrar a foto, o board do Kanban e o conector do Telegram (`cli
 
 ## Métricas diárias
 
-`scripts/metrics.ts` coleta todo dia, pelo Composio, as métricas de cada post e da conta de cada projeto e guarda o histórico em `metrics/<projeto>/`. A Graph API só mostra janelas recentes (séries diárias de até 30 dias, nada de posts com mais de 2 anos), então o que não for guardado aqui se perde.
+`scripts/metrics.ts` coleta todo dia, pelo Composio, as métricas de cada post e da conta de cada projeto e guarda o histórico em `metrics/<project>/`. A Graph API só mostra janelas recentes (séries diárias de até 30 dias, nada de posts com mais de 2 anos), então o que não for guardado aqui se perde.
 
 ### Rodar à mão
 
 ```sh
 cd marketing/instagram
-bun run metrics              # todos os projetos com publicacao.json
+bun run metrics              # todos os projetos com publishing.json
 bun run metrics partyshare   # só um projeto
 bun run test                 # testes contra um Composio falso
 ```
@@ -241,17 +241,17 @@ Rodar de novo no mesmo dia é seguro: os valores são substituídos, não somado
 
 ### Configuração
 
-O script usa o mesmo cliente do fluxo de publicação (`scripts/composio.ts`, MCP da área de consumidor) e lê as chaves de `~/.config/cline-marketing/instagram.env` por `scripts/segredos.ts` (ver [Onde ficam as chaves](#onde-ficam-as-chaves)). Só precisa de `COMPOSIO_CONSUMER_API_KEY`.
+O script usa o mesmo cliente do fluxo de publicação (`scripts/composio.ts`, MCP da área de consumidor) e lê as chaves de `~/.config/cline-marketing/instagram.env` por `scripts/secrets.ts` (ver [Onde ficam as chaves](#onde-ficam-as-chaves)). Só precisa de `COMPOSIO_CONSUMER_API_KEY`.
 
-**As contas vêm do projeto.** O script lê `projects/<projeto>/publicacao.json`, o mesmo arquivo que o fluxo de publicação preenche com `publicacao.ts conexao <projeto> --salvar`:
+**As contas vêm do projeto.** O script lê `projects/<project>/publishing.json`, o mesmo arquivo que o fluxo de publicação preenche com `publishing.ts connection <project> --save`:
 
 | Campo | Uso |
 |---|---|
-| `instagram.contaComposio`, `instagram.igUserId` | Preenchidos por `conexao --salvar`. Enquanto os dois forem `null`, o Instagram do projeto é pulado sem erro: é o caso da Party Share hoje |
-| `facebook.pageId` | Com ele, a Página entra na coleta. `facebook.contaComposio` escolhe a conexão quando há mais de uma; em `null`, vale a conta padrão do Composio, como na publicação |
+| `instagram.composioAccount`, `instagram.igUserId` | Preenchidos por `connection --save`. Enquanto os dois forem `null`, o Instagram do projeto é pulado sem erro: é o caso da Party Share hoje |
+| `facebook.pageId` | Com ele, a Página entra na coleta. `facebook.composioAccount` escolhe a conexão quando há mais de uma; em `null`, vale a conta padrão do Composio, como na publicação |
 | `offset` | Fuso que define "um dia" (`-03:00`) |
 
-Um projeto sem `publicacao.json`, ou sem nenhuma conta preenchida nele, não é coletado. Um projeto nunca lê as contas de outro.
+Um projeto sem `publishing.json`, ou sem nenhuma conta preenchida nele, não é coletado. Um projeto nunca lê as contas de outro.
 
 | Variável | Obrigatória | Descrição |
 |---|---|---|
@@ -286,7 +286,7 @@ Para não gastar chamadas à toa:
 
 ### Formato: um JSON por dia
 
-`metrics/<projeto>/<AAAA-MM-DD>.json`, um arquivo por dia e por projeto, em vez de SQLite, porque:
+`metrics/<project>/<AAAA-MM-DD>.json`, um arquivo por dia e por projeto, em vez de SQLite, porque:
 
 - o histórico é o que importa guardar, e o repositório é o backup. O `.gitignore` da raiz ignora `*.db`, e um banco binário no git não mostra diferença nem se resolve num conflito; um JSON por dia aparece no diff de cada commit;
 - o volume é pequeno (dezenas de posts, um arquivo por dia) e não pede consultas;
@@ -324,10 +324,10 @@ Cada valor fica num lugar só, no arquivo da data a que pertence:
 
 - **Métricas da conta por dia** (`account.day`, `page.day`) vão no arquivo do dia medido. A execução de hoje busca ontem e anteontem de novo, porque a Meta ainda ajusta esses números por até 48h, e qualquer dia sem métrica nos últimos `METRICS_LOOKBACK_DAYS`. Por isso um dia em que o job não rodou é preenchido no dia seguinte, e buscar de novo substitui o valor em vez de somar.
 - **Métricas de post** são totais acumulados. Cada dia guarda uma foto, e a evolução de um post é a sequência dessas fotos. Rodar de novo no mesmo dia troca a foto; se a nova chamada falhar, a foto anterior do dia é mantida.
-- **`calendar`** liga o post ao item do calendário: o script procura em `projects/<projeto>/posts/*/post.json` o `publicacao.instagram.mediaId`, o permalink ou o `publicacao.facebook.postId`. Fica `null` quando o post não saiu do calendário.
+- **`calendar`** liga o post ao item do calendário: o script procura em `projects/<project>/posts/*/post.json` o `publishing.instagram.mediaId`, o permalink ou o `publishing.facebook.postId`. Fica `null` quando o post não saiu do calendário.
 - Os dias seguem `METRICS_UTC_OFFSET`. Séries diárias da Meta (`follower_count`, insights da Página) usam o dia do Pacífico e são encaixadas no dia local mais próximo.
 
-Commite os arquivos de `metrics/<projeto>/` de tempos em tempos: são eles o histórico.
+Commite os arquivos de `metrics/<project>/` de tempos em tempos: são eles o histórico.
 
 ### Agendamento diário (schedules do Cline)
 
@@ -359,13 +359,13 @@ O agente agendado precisa de um provedor de LLM configurado (`cline auth`). A ch
 
 ## Relatório semanal
 
-`scripts/report.ts` cruza as métricas de `metrics/<projeto>/` com a campanha do projeto e grava `reports/<projeto>/<semana ISO>.md`, por exemplo `reports/partyshare/2026-W43.md`. O schedule semanal manda esse texto ao Telegram. Lá, uma mensagem longa vira um arquivo `.md` sozinha.
+`scripts/report.ts` cruza as métricas de `metrics/<project>/` com a campanha do projeto e grava `reports/<project>/<semana ISO>.md`, por exemplo `reports/partyshare/2026-W43.md`. O schedule semanal manda esse texto ao Telegram. Lá, uma mensagem longa vira um arquivo `.md` sozinha.
 
 ```sh
 cd marketing/instagram
-bun run report                                  # semana anterior (seg–dom), todos os projetos com publicacao.json
-bun run report partyshare --semana 2026-W43     # uma semana escolhida
-bun run report partyshare --sem-comentarios     # sem chamar o Composio
+bun run report                                  # semana anterior (seg–dom), todos os projetos com publishing.json
+bun run report partyshare --week 2026-W43     # uma semana escolhida
+bun run report partyshare --no-comments     # sem chamar o Composio
 ```
 
 O relatório sai no stdout, e a linha de resumo e os erros saem no stderr. Rodar de novo regrava o arquivo da semana.
@@ -379,7 +379,7 @@ O relatório sai no stdout, e a linha de resumo e os erros saem no stderr. Rodar
 | Fora do ar | Itens de feed do calendário da semana (tudo menos Story) sem post publicado |
 | Comentários | Lidos pelo Composio só para os posts da semana: `INSTAGRAM_GET_IG_MEDIA_COMMENTS` nos posts com comentários e `FACEBOOK_GET_COMMENTS` em cada post da Página, até 50 por post. São agrupados por tema com palavras-chave (preço, TI e segurança, como funciona, wi-fi, datas e vagas, elogio). O relatório traz a contagem e um exemplo curto, sem autor e com as @ apagadas; o texto dos comentários não é guardado |
 | Para a semana que vem | 3 recomendações, escolhidas por prioridade: Instagram desconectado; item do calendário que não saiu; objeção que se repete nos comentários (com o post da semana seguinte que pode respondê-la); formato, pilar ou horário que rendeu pelo menos 25% mais; queda de alcance de 20% ou mais; post mais salvo. Quando faltam dados, entram passos práticos: coleta que falhou e os próximos itens do calendário |
-| Composio | Chamadas da coleta diária da semana (somadas de `runs`) e as deste relatório, seguidas da linha de [Consumo do Composio](#consumo-do-composio) (`linhaDeConsumo`). As chamadas do relatório ficam em `projects/<projeto>/composio-chamadas.jsonl` com `"comando": "report"`, então entram no total do mês |
+| Composio | Chamadas da coleta diária da semana (somadas de `runs`) e as deste relatório, seguidas da linha de [Consumo do Composio](#consumo-do-composio) (`usageLine`). As chamadas do relatório ficam em `projects/<project>/composio-calls.jsonl` com `"command": "report"`, então entram no total do mês |
 
 Com Instagram, a comparação usa o engajamento dos posts do Instagram. Só com a Página, usa o alcance, porque a Página não dá interações por post.
 
@@ -418,11 +418,11 @@ Três cuidados, todos vistos no primeiro disparo:
 - **Passe `--address`.** Sem ele, o comando usa um cliente local, que roda o agente no próprio processo, e nada chega ao hub nem ao Telegram. O endereço é o `rpcAddress` de `~/.cline/data/connectors/telegram/<bot>.json`. `trigger` só aceita um schedule habilitado.
 - **O provedor `claude-code` passa os comandos pelas permissões do Claude Code de quem roda o hub.** Sem uma regra que libere `bun run report` (por exemplo `Bash(bun run report:*)` em `permissions.allow`), o agente agendado tem o comando negado e a execução acaba em timeout. A outra saída é um provedor nativo (`cline auth`): em `--mode yolo`, ele roda o comando sem perguntar.
 
-Commite os arquivos de `reports/<projeto>/` junto com os de `metrics/<projeto>/`.
+Commite os arquivos de `reports/<project>/` junto com os de `metrics/<project>/`.
 
 ## Consumo do Composio
 
-A decisão do projeto: ficar no Composio enquanto o consumo couber no plano gratuito e construir o conector nativo da Meta se passar. `scripts/consumo.ts` soma as chamadas que cada job registrou, projeta o mês e avisa no Telegram quando a projeção passa de **70% do gratuito**.
+A decisão do projeto: ficar no Composio enquanto o consumo couber no plano gratuito e construir o conector nativo da Meta se passar. `scripts/usage.ts` soma as chamadas que cada job registrou, projeta o mês e avisa no Telegram quando a projeção passa de **70% do gratuito**.
 
 **Projeção hoje: ~140 chamadas/mês, 0,14% do gratuito** (só a Página, com o Instagram da Party Share ainda desconectado). Com o Instagram conectado, ~700/mês (0,7%); depois de um ano no ritmo do calendário, ~3.300/mês (3,3%). As contas estão em [Modelo da projeção](#modelo-da-projeção).
 
@@ -442,30 +442,30 @@ Cada job registra as chamadas que fez, falhas incluídas, porque o Composio cobr
 
 | Fluxo | Onde o job registra |
 |---|---|
-| Métricas (`metrics.ts`) | `runs[].composioCalls` em `metrics/<projeto>/<AAAA-MM-DD>.json` |
-| Publicação (`publicacao.ts conexao`, `publicar`, `remover`) | uma linha por comando em `projects/<projeto>/composio-chamadas.jsonl`, gravada na saída, até quando o comando para no meio |
+| Métricas (`metrics.ts`) | `runs[].composioCalls` em `metrics/<project>/<AAAA-MM-DD>.json` |
+| Publicação (`publishing.ts connection`, `publish`, `remove`) | uma linha por comando em `projects/<project>/composio-calls.jsonl`, gravada na saída, até quando o comando para no meio |
 
-As meta tools (`COMPOSIO_MANAGE_CONNECTIONS`, de `conexao`) ficam em `metaTools`, fora do total. As duas primeiras linhas do PartyShare foram reconstruídas do `historico` do post de teste de 15/10 (`reconstruido` no registro), que rodou antes de haver registro.
+As meta tools (`COMPOSIO_MANAGE_CONNECTIONS`, de `connection`) ficam em `metaTools`, fora do total. As duas primeiras linhas do PartyShare foram reconstruídas do `history` do post de teste de 15/10 (`reconstructed` no registro), que rodou antes de haver registro.
 
 ```sh
 cd marketing/instagram
-bun run consumo              # mês até agora, projeção, por projeto e por ação
-bun run consumo -- --linha   # a linha do relatório semanal
-bun run consumo -- --aviso   # a mesma linha; sai com 2 quando passa do aviso
-bun run consumo -- --json
+bun run usage              # mês até agora, projeção, por projeto e por ação
+bun run usage -- --line   # a linha do relatório semanal
+bun run usage -- --warn   # a mesma linha; sai com 2 quando passa do aviso
+bun run usage -- --json
 ```
 
-**Projeção:** o que foi registrado no mês (no fuso `-03:00`) mais a média diária dos últimos 7 dias vezes os dias que faltam. Com menos de 7 dias de histórico, a média é desde o primeiro registro, o que pesa para cima logo depois de um job novo começar. `COMPOSIO_GRATIS_CHAMADAS` e `CONSUMO_AVISO_PCT` trocam o limite e o aviso, se o plano mudar.
+**Projeção:** o que foi registrado no mês (no fuso `-03:00`) mais a média diária dos últimos 7 dias vezes os dias que faltam. Com menos de 7 dias de histórico, a média é desde o primeiro registro, o que pesa para cima logo depois de um job novo começar. `COMPOSIO_FREE_CALLS` e `USAGE_WARN_PCT` trocam o limite e o aviso, se o plano mudar.
 
 ### Linha no relatório semanal
 
-O relatório semanal inclui a saída de `bun run consumo -- --linha`, como está, por exemplo:
+O relatório semanal inclui a saída de `bun run usage -- --line`, como está, por exemplo:
 
 ```
 Composio out/2026: 3 chamadas até 15/10 (publicação 3 · métricas 0) · projeção 52 no mês = 0,1% do gratuito (100 mil) · triggers 0
 ```
 
-Quem gera o relatório em TypeScript pode usar `projetar(lerRegistros(...))` e `linhaDeConsumo(...)`, exportados por `scripts/consumo.ts`.
+Quem gera o relatório em TypeScript pode usar `projectUsage(readUsageRecords(...))` e `usageLine(...)`, exportados por `scripts/usage.ts`.
 
 ### Aviso no Telegram
 
@@ -482,7 +482,7 @@ bun run cli schedule create "Instagram: consumo do Composio" \
   --tags instagram,composio \
   --delivery-adapter telegram \
   --delivery-thread <deliveryThread> \
-  --prompt "Em marketing/instagram, rode exatamente: bun run consumo -- --aviso. Não edite nenhum arquivo nem rode outro comando. Responda só com a linha que o comando imprimir, sem mudar nada nela. Se o comando sair com código diferente de 0 e de 2, comece a resposta com FALHOU e diga o erro."
+  --prompt "Em marketing/instagram, rode exatamente: bun run usage -- --warn. Não edite nenhum arquivo nem rode outro comando. Responda só com a linha que o comando imprimir, sem mudar nada nela. Se o comando sair com código diferente de 0 e de 2, comece a resposta com FALHOU e diga o erro."
 ```
 
 O `<deliveryThread>` sai de `/whereami` no chat do bot. O conector do Telegram (`cline connect telegram`) e o hub precisam estar rodando no horário. Para conferir: `bun run cli schedule list --tags composio` e `bun run cli schedule trigger <id>`.
@@ -497,14 +497,14 @@ Chamadas por ação, contadas no código:
 |---|---|
 | Publicar no Instagram (post ou carrossel) | 4: limite da Meta, container, publish, permalink |
 | Espelho na Página | 2: post e permalink |
-| `conexao` | 2 a 3 ações (+1 meta tool, grátis) |
+| `connection` | 2 a 3 ações (+1 meta tool, grátis) |
 | Métricas, por dia | Instagram `N + 5` (+4 por semana com 100+ seguidores) e Página `M + 3`, com N e M os posts com menos de 2 anos |
 
 O calendário da Party Share tem 3 a 4 posts de feed por mês nesta fase. Stories e Reels não passam pelo Composio.
 
 | Cenário | Métricas/mês | Publicação/mês | Total/mês | % do gratuito |
 |---|---|---|---|---|
-| **Hoje**: só a Página (M ≈ 1), 3 posts | (1 + 3) × 31 ≈ 124 | 3 × 2 + `conexao` ≈ 10 | **~140** | **0,14%** |
+| **Hoje**: só a Página (M ≈ 1), 3 posts | (1 + 3) × 31 ≈ 124 | 3 × 2 + `connection` ≈ 10 | **~140** | **0,14%** |
 | Instagram conectado, ~10 posts antigos no IG, 3 posts/mês | (10 + 5,6 + 3 + 3) × 30 ≈ 650 | 3 × 6 ≈ 18 | ~700 | 0,7% |
 | Depois de 12 meses no ritmo do calendário (N ≈ M ≈ 50) | (55,6 + 53) × 30 ≈ 3.260 | ≈ 24 | ~3.300 | 3,3% |
 | Teto do projeto, 3 posts/dia, sustentado | +180 chamadas/dia a cada mês (90 posts no IG e 90 na Página) | ≈ 540 | 70% em ~13 meses | — |

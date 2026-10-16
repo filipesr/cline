@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { ErroComposio } from "./composio"
+import { ComposioError } from "./composio"
 import { POST_METRICS, collect, countingComposio, projectSources, readDaily, supportedMetricsAfterError } from "./metrics"
 
 type Call = { slug: string; args: Record<string, unknown> }
@@ -27,15 +27,15 @@ function fakeMeta(options: { followers?: number; oldMediaError?: boolean } = {})
 					: { data: media.slice(0, 2), paging: { cursors: { after: "c1" }, next: "https://graph/next" } }
 			case "INSTAGRAM_GET_IG_MEDIA_INSIGHTS": {
 				if (args.ig_media_id === "m-old" && options.oldMediaError !== false) {
-					throw new ErroComposio(slug, "The media was posted before the most recent time that the user's account was converted to a business account")
+					throw new ComposioError(slug, "The media was posted before the most recent time that the user's account was converted to a business account")
 				}
 				const metrics = args.metric as string[]
 				return { data: metrics.map((name, i) => ({ name, period: "lifetime", values: [{ value: 10 + i }] })) }
 			}
 			case "INSTAGRAM_GET_USER_INSIGHTS": {
 				// The real action wants a numeric ig_user_id or none at all.
-				if ("ig_user_id" in args && !/^\d+$/.test(String(args.ig_user_id))) throw new ErroComposio(slug, "ig_user_id must be numeric")
-				if ((args.metric as string[])[0] === "follower_demographics" && !args.timeframe) throw new ErroComposio(slug, "timeframe is required")
+				if ("ig_user_id" in args && !/^\d+$/.test(String(args.ig_user_id))) throw new ComposioError(slug, "ig_user_id must be numeric")
+				if ((args.metric as string[])[0] === "follower_demographics" && !args.timeframe) throw new ComposioError(slug, "timeframe is required")
 				const metric = args.metric as string[]
 				if (metric[0] === "follower_count") {
 					const values = []
@@ -56,7 +56,7 @@ function fakeMeta(options: { followers?: number; oldMediaError?: boolean } = {})
 				return { id: "page1", name: "Party Share", followers_count: 4, fan_count: 3 }
 			case "FACEBOOK_GET_PAGE_INSIGHTS": {
 				// The real action rejects numbers here.
-				if (typeof args.since !== "string" || typeof args.until !== "string") throw new ErroComposio(slug, "Input should be a valid string on parameter `since`")
+				if (typeof args.since !== "string" || typeof args.until !== "string") throw new ComposioError(slug, "Input should be a valid string on parameter `since`")
 				const metrics = String(args.metrics).split(",")
 				return {
 					data: metrics.map((name) => {
@@ -73,7 +73,7 @@ function fakeMeta(options: { followers?: number; oldMediaError?: boolean } = {})
 			case "FACEBOOK_GET_POST_INSIGHTS":
 				return { data: String(args.metrics).split(",").map((name) => ({ name, period: "lifetime", values: [{ value: 3 }] })) }
 			default:
-				throw new ErroComposio(slug, "unexpected slug in fake")
+				throw new ComposioError(slug, "unexpected slug in fake")
 		}
 	}
 	return { run, calls }
@@ -94,11 +94,11 @@ beforeEach(() => {
 	writeFileSync(
 		join(postDir, "post.json"),
 		JSON.stringify({
-			projeto: "partyshare",
+			project: "partyshare",
 			slug: "telao",
-			data: "2026-10-10",
-			codigo: "E01",
-			publicacao: { instagram: { mediaId: "m1", permalink: "https://instagram.com/p/AAA/" }, facebook: { postId: "page1_p1" } },
+			date: "2026-10-10",
+			code: "E01",
+			publishing: { instagram: { mediaId: "m1", permalink: "https://instagram.com/p/AAA/" }, facebook: { postId: "page1_p1" } },
 		}),
 	)
 })
@@ -183,7 +183,7 @@ describe("collect", () => {
 
 	test("a profile failure marks the run failed but still records it with its calls", async () => {
 		const broken = countingComposio(async (slug) => {
-			throw new ErroComposio(slug, "HTTP 401")
+			throw new ComposioError(slug, "HTTP 401")
 		})
 		const { run } = await collect({ composio: broken, dir, projectsDir, project: "partyshare", instagram: { account: "ca_instagram" }, now: at("2026-10-15T09:00:00-03:00") })
 		expect(run.status).toBe("failed")
@@ -193,13 +193,13 @@ describe("collect", () => {
 })
 
 describe("project sources", () => {
-	test("the accounts come from the project's publicacao.json; a Page without contaComposio uses the default account", () => {
+	test("the accounts come from the project's publishing.json; a Page without composioAccount uses the default account", () => {
 		writeFileSync(
-			join(projectsDir, "partyshare", "publicacao.json"),
+			join(projectsDir, "partyshare", "publishing.json"),
 			JSON.stringify({
-				offset: "-03:00",
-				instagram: { contaComposio: null, igUserId: null },
-				facebook: { espelhar: true, contaComposio: null, pageId: "1351629444696145" },
+				utcOffset: "-03:00",
+				instagram: { composioAccount: null, igUserId: null },
+				facebook: { mirror: true, composioAccount: null, pageId: "1351629444696145" },
 			}),
 		)
 		const sources = projectSources(projectsDir, "partyshare")

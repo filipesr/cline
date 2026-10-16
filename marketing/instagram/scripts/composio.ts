@@ -1,41 +1,41 @@
 /**
- * Cliente mínimo do Composio para o fluxo de publicação, pelo MCP de consumidor
- * (https://connect.composio.dev/mcp), que é onde a conta Instagram e a Página do Facebook
- * estão conectadas (ver composio.md).
+ * Minimal Composio client for the publishing flow, through the consumer MCP
+ * (https://connect.composio.dev/mcp), which is where the Instagram account and the Facebook Page
+ * are connected (see composio.md).
  *
- * As conexões não passam de um projeto do Composio para outro. O proxy de conectores da Cline
- * API (sdk/packages/core/src/extensions/composio/) fala com o projeto da Cline e exige uma
- * sessão Cline logada com CLINE_COMPOSIO_BETA, então não enxerga estas contas. Cada ação roda
- * por COMPOSIO_MULTI_EXECUTE_TOOL, uma de cada vez, porque a publicação depende da ordem.
+ * Connections do not carry over from one Composio project to another. The Cline API connector
+ * proxy (sdk/packages/core/src/extensions/composio/) talks to Cline's project and requires a
+ * logged-in Cline session with CLINE_COMPOSIO_BETA, so it cannot see these accounts. Each action
+ * runs through COMPOSIO_MULTI_EXECUTE_TOOL, one at a time, because publishing depends on order.
  *
- * Env: COMPOSIO_CONSUMER_API_KEY (ck_…, composio.dev → For You → Connect my agent) e
- * COMPOSIO_MCP_URL (opcional).
+ * Env: COMPOSIO_CONSUMER_API_KEY (ck_…, composio.dev → For You → Connect my agent) and
+ * COMPOSIO_MCP_URL (optional).
  */
 
-const MCP_PADRAO = "https://connect.composio.dev/mcp";
+const DEFAULT_MCP_URL = "https://connect.composio.dev/mcp";
 
-export class ErroComposio extends Error {
+export class ComposioError extends Error {
 	constructor(
 		readonly slug: string,
-		mensagem: string,
+		message: string,
 	) {
-		super(`${slug}: ${mensagem}`);
+		super(`${slug}: ${message}`);
 	}
 }
 
 export type Composio = {
-	/** O que o Composio diz das conexões destes toolkits, como veio. */
-	conexoes(toolkits: string[]): Promise<unknown>;
-	/** `conta` escolhe entre várias contas do mesmo toolkit, quando o Composio aceita. */
-	executar(
+	/** What Composio says about these toolkits' connections, as it came. */
+	connections(toolkits: string[]): Promise<unknown>;
+	/** `account` picks among several accounts of the same toolkit, when Composio accepts it. */
+	execute(
 		slug: string,
-		argumentos: Record<string, unknown>,
-		conta?: string | null,
+		args: Record<string, unknown>,
+		account?: string | null,
 	): Promise<unknown>;
 };
 
-/** O `data` das ações às vezes chega como JSON em texto; devolve sempre o valor já lido. */
-export function lerDados(data: unknown): unknown {
+/** Actions' `data` sometimes arrives as JSON text; always returns the already-parsed value. */
+export function parseData(data: unknown): unknown {
 	if (typeof data !== "string") return data;
 	try {
 		return JSON.parse(data);
@@ -45,213 +45,211 @@ export function lerDados(data: unknown): unknown {
 }
 
 /**
- * Primeiro valor de `chave` encontrado em profundidade. As ações embrulham a resposta da Graph
- * API de jeitos diferentes (`data.id`, `data.response_data.id`, `data.data[0].id`), e o fluxo
- * só precisa do campo.
+ * First value of `key` found depth-first. Actions wrap the Graph API response in different
+ * ways (`data.id`, `data.response_data.id`, `data.data[0].id`), and the flow only needs the
+ * field.
  */
-export function acharCampo(
-	valor: unknown,
-	chave: string,
-	profundidade = 6,
-): unknown {
-	if (!valor || typeof valor !== "object" || profundidade < 0) return undefined;
-	const registro = valor as Record<string, unknown>;
+export function findField(value: unknown, key: string, depth = 6): unknown {
+	if (!value || typeof value !== "object" || depth < 0) return undefined;
+	const record = value as Record<string, unknown>;
 	if (
-		!Array.isArray(valor) &&
-		registro[chave] !== undefined &&
-		registro[chave] !== null
+		!Array.isArray(value) &&
+		record[key] !== undefined &&
+		record[key] !== null
 	) {
-		return registro[chave];
+		return record[key];
 	}
-	for (const filho of Object.values(registro)) {
-		const achado = acharCampo(lerDados(filho), chave, profundidade - 1);
-		if (achado !== undefined) return achado;
+	for (const child of Object.values(record)) {
+		const found = findField(parseData(child), key, depth - 1);
+		if (found !== undefined) return found;
 	}
 	return undefined;
 }
 
-/** Uma resposta JSON-RPC, venha ela como JSON ou como eventos SSE. */
-function lerRespostaMcp(
-	texto: string,
+/** A JSON-RPC response, whether it comes as JSON or as SSE events. */
+function parseMcpResponse(
+	text: string,
 	contentType: string,
 ): Record<string, unknown> | undefined {
 	if (!contentType.includes("text/event-stream")) {
-		return texto ? (JSON.parse(texto) as Record<string, unknown>) : undefined;
+		return text ? (JSON.parse(text) as Record<string, unknown>) : undefined;
 	}
-	const mensagens = texto
+	const messages = text
 		.split("\n")
 		.filter((l) => l.startsWith("data:"))
 		.map((l) => l.slice(5).trim())
 		.filter(Boolean)
 		.map((l) => JSON.parse(l) as Record<string, unknown>);
-	return mensagens.find((m) => "result" in m || "error" in m);
+	return messages.find((m) => "result" in m || "error" in m);
 }
 
-type Esquema = { properties?: Record<string, Record<string, unknown>> };
+type Schema = { properties?: Record<string, Record<string, unknown>> };
 
-export function criarComposio(opcoes?: {
-	chave?: string;
+export function createComposio(options?: {
+	key?: string;
 	url?: string;
 	fetch?: typeof fetch;
 }): Composio {
-	const chave = opcoes?.chave ?? process.env.COMPOSIO_CONSUMER_API_KEY?.trim();
-	if (!chave) {
+	const key = options?.key ?? process.env.COMPOSIO_CONSUMER_API_KEY?.trim();
+	if (!key) {
 		throw new Error(
 			"falta COMPOSIO_CONSUMER_API_KEY (composio.dev → For You → Connect my agent, chave ck_…); ponha em ~/.config/cline-marketing/instagram.env",
 		);
 	}
-	const url = opcoes?.url ?? process.env.COMPOSIO_MCP_URL?.trim() ?? MCP_PADRAO;
-	const http = opcoes?.fetch ?? fetch;
-	let sessao: string | undefined;
-	let esquemas: Map<string, Esquema> | undefined;
-	let proximoId = 1;
+	const url =
+		options?.url ?? process.env.COMPOSIO_MCP_URL?.trim() ?? DEFAULT_MCP_URL;
+	const http = options?.fetch ?? fetch;
+	let session: string | undefined;
+	let schemas: Map<string, Schema> | undefined;
+	let nextId = 1;
 
-	async function rpc(metodo: string, params: unknown, notificacao = false) {
-		const resposta = await http(url, {
+	async function rpc(method: string, params: unknown, notification = false) {
+		const response = await http(url, {
 			method: "POST",
 			headers: {
-				"x-consumer-api-key": chave as string,
+				"x-consumer-api-key": key as string,
 				"content-type": "application/json",
 				accept: "application/json, text/event-stream",
-				...(sessao ? { "mcp-session-id": sessao } : {}),
+				...(session ? { "mcp-session-id": session } : {}),
 			},
 			body: JSON.stringify({
 				jsonrpc: "2.0",
-				method: metodo,
+				method,
 				params,
-				...(notificacao ? {} : { id: proximoId++ }),
+				...(notification ? {} : { id: nextId++ }),
 			}),
 			signal: AbortSignal.timeout(180_000),
 		});
-		sessao = resposta.headers.get("mcp-session-id") ?? sessao;
-		const texto = await resposta.text();
-		if (!resposta.ok) {
-			throw new ErroComposio(
-				metodo,
-				`HTTP ${resposta.status} ${texto.slice(0, 400)}`,
+		session = response.headers.get("mcp-session-id") ?? session;
+		const text = await response.text();
+		if (!response.ok) {
+			throw new ComposioError(
+				method,
+				`HTTP ${response.status} ${text.slice(0, 400)}`,
 			);
 		}
-		if (notificacao) return undefined;
-		const mensagem = lerRespostaMcp(
-			texto,
-			resposta.headers.get("content-type") ?? "",
+		if (notification) return undefined;
+		const message = parseMcpResponse(
+			text,
+			response.headers.get("content-type") ?? "",
 		);
-		if (mensagem?.error)
-			throw new ErroComposio(
-				metodo,
-				JSON.stringify(mensagem.error).slice(0, 400),
+		if (message?.error)
+			throw new ComposioError(
+				method,
+				JSON.stringify(message.error).slice(0, 400),
 			);
-		return mensagem?.result as Record<string, unknown> | undefined;
+		return message?.result as Record<string, unknown> | undefined;
 	}
 
-	async function iniciar() {
-		if (esquemas) return esquemas;
+	async function init() {
+		if (schemas) return schemas;
 		await rpc("initialize", {
 			protocolVersion: "2025-06-18",
 			capabilities: {},
 			clientInfo: { name: "marketing-instagram", version: "1" },
 		});
 		await rpc("notifications/initialized", {}, true);
-		const lista = await rpc("tools/list", {});
-		esquemas = new Map(
+		const list = await rpc("tools/list", {});
+		schemas = new Map(
 			(
-				(lista?.tools as
-					| { name: string; inputSchema?: Esquema }[]
-					| undefined) ?? []
+				(list?.tools as { name: string; inputSchema?: Schema }[] | undefined) ??
+				[]
 			).map((t) => [t.name, t.inputSchema ?? {}]),
 		);
-		for (const necessaria of [
+		for (const required of [
 			"COMPOSIO_MULTI_EXECUTE_TOOL",
 			"COMPOSIO_MANAGE_CONNECTIONS",
 		]) {
-			if (!esquemas.has(necessaria))
-				throw new ErroComposio("tools/list", `o MCP não expõe ${necessaria}`);
+			if (!schemas.has(required))
+				throw new ComposioError("tools/list", `o MCP não expõe ${required}`);
 		}
-		return esquemas;
+		return schemas;
 	}
 
-	/** Chama uma meta tool e devolve o `data` do resultado, já sem o embrulho do MCP. */
-	async function meta(nome: string, argumentos: Record<string, unknown>) {
-		await iniciar();
-		const resultado = await rpc("tools/call", {
-			name: nome,
-			arguments: argumentos,
+	/** Calls a meta tool and returns the result's `data`, already unwrapped from the MCP envelope. */
+	async function meta(name: string, args: Record<string, unknown>) {
+		await init();
+		const result = await rpc("tools/call", {
+			name,
+			arguments: args,
 		});
-		const textos = (
-			(resultado?.content as { type: string; text?: string }[] | undefined) ??
-			[]
+		const texts = (
+			(result?.content as { type: string; text?: string }[] | undefined) ?? []
 		)
 			.filter((c) => c.type === "text" && c.text)
 			.map((c) => c.text as string);
-		const corpo = (lerDados(textos.join("")) ?? {}) as Record<string, unknown>;
-		if (resultado?.isError || corpo.successful === false) {
-			throw new ErroComposio(
-				nome,
-				String(corpo.error ?? textos.join(" ").slice(0, 600)),
+		const body = (parseData(texts.join("")) ?? {}) as Record<string, unknown>;
+		if (result?.isError || body.successful === false) {
+			throw new ComposioError(
+				name,
+				String(body.error ?? texts.join(" ").slice(0, 600)),
 			);
 		}
-		return lerDados(corpo.data ?? corpo);
+		return parseData(body.data ?? body);
 	}
 
 	return {
-		async conexoes(toolkits) {
-			const propriedades =
-				(await iniciar()).get("COMPOSIO_MANAGE_CONNECTIONS")?.properties ?? {};
-			// Só listar: sem `action: "list"` a mesma ferramenta abre uma conexão nova (o padrão é
-			// "add"). Hoje a ação vai em cada toolkit ({ name, action }); antes ia uma só no topo.
-			const item = (propriedades.toolkits?.items as Esquema | undefined)
+		async connections(toolkits) {
+			const properties =
+				(await init()).get("COMPOSIO_MANAGE_CONNECTIONS")?.properties ?? {};
+			// List only: without `action: "list"` the same tool opens a new connection (the default
+			// is "add"). Today the action goes in each toolkit ({ name, action }); it used to be a
+			// single one at the top level.
+			const item = (properties.toolkits?.items as Schema | undefined)
 				?.properties;
 			if (item && "action" in item) {
 				return meta("COMPOSIO_MANAGE_CONNECTIONS", {
 					toolkits: toolkits.map((name) => ({ name, action: "list" })),
 				});
 			}
-			if ("action" in propriedades) {
+			if ("action" in properties) {
 				return meta("COMPOSIO_MANAGE_CONNECTIONS", {
 					toolkits,
 					action: "list",
 				});
 			}
-			throw new ErroComposio(
+			throw new ComposioError(
 				"COMPOSIO_MANAGE_CONNECTIONS",
 				'o esquema não tem "action"; sem ela a chamada abriria conexões novas em vez de listar',
 			);
 		},
 
-		async executar(slug, argumentos, conta) {
-			const itens = (await iniciar()).get("COMPOSIO_MULTI_EXECUTE_TOOL")
-				?.properties?.tools?.items as Esquema | undefined;
-			const campoConta = ["account", "connected_account_id"].find(
-				(c) => c in (itens?.properties ?? {}),
+		async execute(slug, args, account) {
+			const items = (await init()).get("COMPOSIO_MULTI_EXECUTE_TOOL")
+				?.properties?.tools?.items as Schema | undefined;
+			const accountField = ["account", "connected_account_id"].find(
+				(c) => c in (items?.properties ?? {}),
 			);
 			const data = (await meta("COMPOSIO_MULTI_EXECUTE_TOOL", {
 				tools: [
 					{
 						tool_slug: slug,
-						arguments: argumentos,
-						...(conta && campoConta ? { [campoConta]: conta } : {}),
+						arguments: args,
+						...(account && accountField ? { [accountField]: account } : {}),
 					},
 				],
-				thought: `publicacao.ts: ${slug}`,
+				thought: `publishing.ts: ${slug}`,
 				sync_response_to_workbench: false,
 			})) as { results?: Record<string, unknown>[] };
-			const resultado = data?.results?.[0];
-			if (!resultado)
-				throw new ErroComposio(
+			const result = data?.results?.[0];
+			if (!result)
+				throw new ComposioError(
 					slug,
 					`sem resultado: ${JSON.stringify(data).slice(0, 400)}`,
 				);
-			const resposta = lerDados(resultado.response) as
+			const response = parseData(result.response) as
 				| Record<string, unknown>
 				| undefined;
-			if (resultado.error || resposta?.successful === false) {
-				const erro = resultado.error ?? resposta?.error ?? "falhou";
-				throw new ErroComposio(
+			if (result.error || response?.successful === false) {
+				const error = result.error ?? response?.error ?? "falhou";
+				throw new ComposioError(
 					slug,
-					typeof erro === "string" ? erro : JSON.stringify(erro).slice(0, 600),
+					typeof error === "string"
+						? error
+						: JSON.stringify(error).slice(0, 600),
 				);
 			}
-			return lerDados(resposta?.data ?? resposta);
+			return parseData(response?.data ?? response);
 		},
 	};
 }

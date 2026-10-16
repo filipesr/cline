@@ -10,14 +10,13 @@
  * (read actions, 1 call per post) and only their themes and a short anonymous
  * quote reach the report.
  *
- * Usage: bun scripts/report.ts [project…] [--semana AAAA-Www] [--sem-comentarios]
+ * Usage: bun scripts/report.ts [project…] [--week YYYY-Www] [--no-comments]
  * (see marketing/instagram/README.md → Relatório semanal)
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join, resolve } from "node:path"
 import { parseArgs } from "node:util"
-import { criarComposio } from "./composio"
-import { lerRegistros, linhaDeConsumo, projetar, registrarPublicacao } from "./consumo"
+import { createComposio } from "./composio"
 import {
 	addDays,
 	type CallCount,
@@ -31,8 +30,9 @@ import {
 	projectSources,
 	readDaily,
 } from "./metrics"
-import { type ItemDoCalendario, itensDoCalendario } from "./publicacao-regras"
-import { carregarSegredos } from "./segredos"
+import { type CalendarItem, calendarItems } from "./publishing-rules"
+import { loadSecrets } from "./secrets"
+import { projectUsage, readUsageRecords, recordPublishingCalls, usageLine } from "./usage"
 
 /** A ratio has to beat the other by this much before it becomes a recommendation. */
 const CLEAR_LEAD = 1.25
@@ -42,7 +42,7 @@ const MAX_COMMENTS_PER_POST = 50
 
 export type Week = { label: string; start: string; end: string }
 
-/** The ISO week (Monday to Sunday) that contains `date` (AAAA-MM-DD). */
+/** The ISO week (Monday to Sunday) that contains `date` (YYYY-MM-DD). */
 export function isoWeek(date: string): Week {
 	const day = new Date(`${date}T00:00:00Z`)
 	const weekday = (day.getUTCDay() + 6) % 7
@@ -57,7 +57,7 @@ export function isoWeek(date: string): Week {
 /** "2026-W42" → that week. */
 export function parseWeek(label: string): Week {
 	const match = label.match(/^(\d{4})-W(\d{2})$/)
-	if (!match) throw new Error(`invalid week "${label}", expected AAAA-Www, e.g. 2026-W42`)
+	if (!match) throw new Error(`invalid week "${label}", expected YYYY-Www, e.g. 2026-W42`)
 	const jan4 = `${match[1]}-01-04`
 	const week = isoWeek(addDays(isoWeek(jan4).start, (Number(match[2]) - 1) * 7))
 	if (week.label !== label) throw new Error(`week ${label} does not exist`)
@@ -71,7 +71,7 @@ function daysOf(week: Week): string[] {
 // ---------- input ----------
 
 /** What the report needs to know about one of the project's post folders. */
-export type PostInfo = { pilar?: string; formato?: string; codigo?: string; slug?: string; data?: string }
+export type PostInfo = { pillar?: string; format?: string; code?: string; slug?: string; date?: string }
 
 export type ReportInput = {
 	project: string
@@ -80,12 +80,12 @@ export type ReportInput = {
 	daily: Map<string, DailyFile>
 	/** posts/<…>/post.json by the path stored in calendar.post (relative to marketing/instagram). */
 	posts: Map<string, PostInfo>
-	calendar: ItemDoCalendario[]
+	calendar: CalendarItem[]
 	/** Comment texts by `${network}:${postId}`, for the posts that were read. */
 	comments?: Map<string, string[]>
 	/** Composio calls this report made to read comments. */
 	reportCalls?: CallCount
-	/** The month's projected Composio use, from consumo.ts (linhaDeConsumo). */
+	/** The month's projected Composio use, from usage.ts (usageLine). */
 	consumption?: string
 	sources: { instagram: boolean; facebook: boolean }
 	utcOffsetMinutes: number
@@ -102,8 +102,8 @@ export type PostRow = {
 	permalink?: string
 	date: string
 	hour?: number
-	pilar: string
-	formato: string
+	pillar: string
+	format: string
 	reach: number | null
 	views: number | null
 	interactions: number | null
@@ -156,16 +156,16 @@ export function weekPosts(input: ReportInput): PostRow[] {
 		const reach = network === "instagram" ? (m.reach ?? null) : (m.post_total_media_view_unique ?? null)
 		const views = network === "instagram" ? (m.views ?? null) : (m.post_media_view ?? null)
 		const interactions = network === "instagram" ? (m.total_interactions ?? null) : null
-		const codigo = info?.codigo ?? entry.calendar?.code ?? planned?.codigo
+		const code = info?.code ?? entry.calendar?.code ?? planned?.code
 		rows.push({
 			network,
 			id: key.slice(network.length + 1),
-			label: codigo ?? info?.slug ?? entry.calendar?.slug ?? shortCaption(entry.caption) ?? date,
+			label: code ?? info?.slug ?? entry.calendar?.slug ?? shortCaption(entry.caption) ?? date,
 			permalink: entry.permalink,
 			date,
 			hour: new Date(at.getTime() + input.utcOffsetMinutes * 60_000).getUTCHours(),
-			pilar: info?.pilar ?? planned?.pilar ?? "fora do calendário",
-			formato: normalizeFormat(info?.formato ?? planned?.formato, entry.mediaType, entry.productType),
+			pillar: info?.pillar ?? planned?.pilar ?? "fora do calendário",
+			format: normalizeFormat(info?.format ?? planned?.formato, entry.mediaType, entry.productType),
 			reach,
 			views,
 			interactions,
@@ -190,17 +190,17 @@ function shortCaption(caption: string | undefined): string | undefined {
 }
 
 /** The calendar line a post fulfils: same code, or same date and pillar among feed items. */
-function plannedItemFor(calendar: ItemDoCalendario[], info: PostInfo | undefined, entry: PostEntry): ItemDoCalendario | undefined {
+function plannedItemFor(calendar: CalendarItem[], info: PostInfo | undefined, entry: PostEntry): CalendarItem | undefined {
 	const feed = calendar.filter((item) => normalizeFormat(item.formato) !== "story")
-	const code = info?.codigo ?? entry.calendar?.code
-	if (code) return feed.find((item) => item.codigo === code)
-	const date = info?.data ?? entry.calendar?.date
+	const code = info?.code ?? entry.calendar?.code
+	if (code) return feed.find((item) => item.code === code)
+	const date = info?.date ?? entry.calendar?.date
 	if (!date) return undefined
-	return feed.find((item) => item.data === date && (!info?.pilar || samePillar(item.pilar, info.pilar)))
+	return feed.find((item) => item.date === date && (!info?.pillar || samePillar(item.pilar, info.pillar)))
 }
 
-function pillarNumber(pilar: string | undefined): string | undefined {
-	return pilar?.match(/^\s*(\d+)/)?.[1]
+function pillarNumber(pillar: string | undefined): string | undefined {
+	return pillar?.match(/^\s*(\d+)/)?.[1]
 }
 
 function samePillar(a: string | undefined, b: string | undefined): boolean {
@@ -313,11 +313,11 @@ function clearLeader(groups: Group[], metric: "reach" | "engagement"): { best: G
 	return { best, worst }
 }
 
-function describeItem(item: ItemDoCalendario): string {
-	return `${item.codigo ?? item.formato} (${item.dia}, ${item.formato.toLowerCase()}, pilar ${item.pilar})`
+function describeItem(item: CalendarItem): string {
+	return `${item.code ?? item.formato} (${item.day}, ${item.formato.toLowerCase()}, pilar ${item.pilar})`
 }
 
-export function recommendations(input: ReportInput, ctx: { rows: PostRow[]; missing: ItemDoCalendario[]; nextWeek: ItemDoCalendario[]; themes: ThemeCount[]; ig: Totals; igBefore: Totals; fb: Totals; fbBefore: Totals }): string[] {
+export function recommendations(input: ReportInput, ctx: { rows: PostRow[]; missing: CalendarItem[]; nextWeek: CalendarItem[]; themes: ThemeCount[]; ig: Totals; igBefore: Totals; fb: Totals; fbBefore: Totals }): string[] {
 	const candidates: Candidate[] = []
 	const nextFeed = ctx.nextWeek.filter((i) => normalizeFormat(i.formato) !== "story")
 	const metric = (rows: PostRow[]) => (rows.some((r) => r.engagement !== null) ? "engagement" : "reach")
@@ -326,7 +326,7 @@ export function recommendations(input: ReportInput, ctx: { rows: PostRow[]; miss
 	if (!input.sources.instagram) {
 		candidates.push({
 			score: 100,
-			text: `Conectar o Instagram no Composio e rodar \`bun scripts/publicacao.ts conexao ${input.project} --salvar\`. Sem ele, o relatório só vê a Página do Facebook e não mede engajamento por post.`,
+			text: `Conectar o Instagram no Composio e rodar \`bun scripts/publishing.ts connection ${input.project} --save\`. Sem ele, o relatório só vê a Página do Facebook e não mede engajamento por post.`,
 		})
 	}
 	for (const item of ctx.missing.slice(0, 1)) {
@@ -347,7 +347,7 @@ export function recommendations(input: ReportInput, ctx: { rows: PostRow[]; miss
 	}
 	const rows = primaryRows(ctx.rows)
 	const m = metric(rows)
-	const byFormat = clearLeader(groupBy(rows, (r) => r.formato), m)
+	const byFormat = clearLeader(groupBy(rows, (r) => r.format), m)
 	if (byFormat) {
 		const swap = nextFeed.find((i) => normalizeFormat(i.formato) === byFormat.worst.key)
 		candidates.push({
@@ -357,7 +357,7 @@ export function recommendations(input: ReportInput, ctx: { rows: PostRow[]; miss
 				(swap ? ` Faça o ${describeItem(swap)} como ${byFormat.best.key}.` : ` No próximo ${byFormat.worst.key} do calendário, teste em ${byFormat.best.key}.`),
 		})
 	}
-	const byPillar = clearLeader(groupBy(rows, (r) => r.pilar), m)
+	const byPillar = clearLeader(groupBy(rows, (r) => r.pillar), m)
 	if (byPillar) {
 		const next = nextFeed.find((i) => samePillar(i.pilar, byPillar.best.key))
 		candidates.push({
@@ -386,7 +386,7 @@ export function recommendations(input: ReportInput, ctx: { rows: PostRow[]; miss
 	if (saved) {
 		candidates.push({
 			score: 40,
-			text: `O ${saved.label} foi o mais salvo (${saved.saved} salvamentos em ${num(saved.reach)} de alcance). Repita a estrutura dele (${saved.formato}, pilar ${saved.pilar}) num post da próxima semana.`,
+			text: `O ${saved.label} foi o mais salvo (${saved.saved} salvamentos em ${num(saved.reach)} de alcance). Repita a estrutura dele (${saved.format}, pilar ${saved.pillar}) num post da próxima semana.`,
 		})
 	}
 	// Fallbacks, so there are always three concrete steps.
@@ -445,11 +445,11 @@ export function buildReport(input: ReportInput): { markdown: string; summary: st
 	const fb = sumDays(input, week, "facebook")
 	const fbBefore = sumDays(input, previous, "facebook")
 
-	const plannedFeed = input.calendar.filter((i) => i.data >= week.start && i.data <= week.end && normalizeFormat(i.formato) !== "story")
+	const plannedFeed = input.calendar.filter((i) => i.date >= week.start && i.date <= week.end && normalizeFormat(i.formato) !== "story")
 	const publishedCodes = new Set(rows.map((r) => r.label))
-	const publishedDates = new Set(rows.map((r) => `${r.date}|${pillarNumber(r.pilar)}`))
-	const missing = plannedFeed.filter((i) => !(i.codigo && publishedCodes.has(i.codigo)) && !publishedDates.has(`${i.data}|${pillarNumber(i.pilar)}`))
-	const upcoming = input.calendar.filter((i) => i.data >= nextWeek.start && i.data <= nextWeek.end)
+	const publishedDates = new Set(rows.map((r) => `${r.date}|${pillarNumber(r.pillar)}`))
+	const missing = plannedFeed.filter((i) => !(i.code && publishedCodes.has(i.code)) && !publishedDates.has(`${i.date}|${pillarNumber(i.pilar)}`))
+	const upcoming = input.calendar.filter((i) => i.date >= nextWeek.start && i.date <= nextWeek.end)
 	const themes = commentThemes([...(input.comments?.values() ?? [])].flat())
 
 	const lines: string[] = []
@@ -495,11 +495,11 @@ export function buildReport(input: ReportInput): { markdown: string; summary: st
 			const peers = rows.filter((r) => r.network === row.network)
 			const rank = peers.length < 2 ? "" : row === peers[0] ? "🥇" : row === peers.at(-1) ? "🔻" : ""
 			lines.push(
-				`| ${rank} ${postLink(row)} | ${row.network === "instagram" ? "IG" : "FB"} | ${row.pilar} | ${row.formato} | ${shortDate(row.date)} ${row.hour ?? "?"}h | ${num(row.reach)} | ${num(row.interactions)} | ${pct(row.engagement)} |`.replace("|  ", "| "),
+				`| ${rank} ${postLink(row)} | ${row.network === "instagram" ? "IG" : "FB"} | ${row.pillar} | ${row.format} | ${shortDate(row.date)} ${row.hour ?? "?"}h | ${num(row.reach)} | ${num(row.interactions)} | ${pct(row.engagement)} |`.replace("|  ", "| "),
 			)
 		}
 		lines.push("")
-		const groups = groupBy(primaryRows(rows), (r) => `${r.pilar} · ${r.formato}`).sort((a, b) => (b.engagement ?? b.reach ?? -1) - (a.engagement ?? a.reach ?? -1))
+		const groups = groupBy(primaryRows(rows), (r) => `${r.pillar} · ${r.format}`).sort((a, b) => (b.engagement ?? b.reach ?? -1) - (a.engagement ?? a.reach ?? -1))
 		if (groups.length > 1) {
 			lines.push("**Por pilar e formato**", "", "| Pilar · formato | Posts | Alcance médio | Engajamento médio | Melhor | Pior |", "|---|---|---|---|---|---|")
 			for (const group of groups) {
@@ -568,7 +568,7 @@ export function readPostInfos(base: string, daily: Map<string, DailyFile>): Map<
 				try {
 					const post = JSON.parse(readFileSync(join(base, path), "utf8")) as Record<string, unknown>
 					const text = (key: string) => (typeof post[key] === "string" ? (post[key] as string) : undefined)
-					infos.set(path, { pilar: text("pilar"), formato: text("formato"), codigo: text("codigo"), slug: text("slug"), data: text("data") })
+					infos.set(path, { pillar: text("pillar"), format: text("format"), code: text("code"), slug: text("slug"), date: text("date") })
 				} catch {
 					// An unreadable post.json just leaves the post without pillar and format.
 				}
@@ -605,11 +605,11 @@ export async function readComments(
 // ---------- CLI ----------
 
 if (import.meta.main) {
-	carregarSegredos()
+	loadSecrets()
 	const { values, positionals } = parseArgs({
 		args: process.argv.slice(2),
 		allowPositionals: true,
-		options: { semana: { type: "string" }, "sem-comentarios": { type: "boolean", default: false } },
+		options: { week: { type: "string" }, "no-comments": { type: "boolean", default: false } },
 	})
 	const base = resolve(import.meta.dir, "..")
 	const projectsDir = join(base, "projects")
@@ -618,19 +618,19 @@ if (import.meta.main) {
 	const reportsDir = resolve(base, read("REPORTS_DIR") ?? "reports")
 	const now = read("REPORT_NOW") ? new Date(read("REPORT_NOW") as string) : new Date()
 	const projects =
-		positionals.length > 0 ? positionals : existsSync(projectsDir) ? readdirSync(projectsDir).filter((name) => existsSync(join(projectsDir, name, "publicacao.json"))) : []
+		positionals.length > 0 ? positionals : existsSync(projectsDir) ? readdirSync(projectsDir).filter((name) => existsSync(join(projectsDir, name, "publishing.json"))) : []
 	let exitCode = 0
 	for (const project of projects) {
 		try {
 			const { config, instagram, facebook } = projectSources(projectsDir, project)
-			if (!config) throw new Error(`projects/${project}/publicacao.json not found`)
-			const offset = parseUtcOffset(read("METRICS_UTC_OFFSET") ?? config.offset ?? "-03:00")
+			if (!config) throw new Error(`projects/${project}/publishing.json not found`)
+			const offset = parseUtcOffset(read("METRICS_UTC_OFFSET") ?? config.utcOffset ?? "-03:00")
 			const today = localDate(now, offset)
 			// On a Monday the report covers the week that just closed.
-			const week = values.semana ? parseWeek(values.semana) : isoWeek(addDays(today, -7))
+			const week = values.week ? parseWeek(values.week) : isoWeek(addDays(today, -7))
 			const daily = readDailyRange(join(metricsDir, project), week, today)
 			const campaignPath = join(projectsDir, project, "campaign.md")
-			const calendar = existsSync(campaignPath) ? (itensDoCalendario(readFileSync(campaignPath, "utf8"), Number(week.start.slice(0, 4))) ?? []) : []
+			const calendar = existsSync(campaignPath) ? (calendarItems(readFileSync(campaignPath, "utf8"), Number(week.start.slice(0, 4))) ?? []) : []
 			const input: ReportInput = {
 				project,
 				week,
@@ -641,19 +641,19 @@ if (import.meta.main) {
 				utcOffsetMinutes: offset,
 			}
 			const errors: string[] = []
-			if (!values["sem-comentarios"] && (instagram || facebook)) {
-				const client = criarComposio()
-				const composio = countingComposio((slug, account, args) => client.executar(slug, args, account))
+			if (!values["no-comments"] && (instagram || facebook)) {
+				const client = createComposio()
+				const composio = countingComposio((slug, account, args) => client.execute(slug, args, account))
 				const result = await readComments(composio, weekPosts(input), { instagram: instagram?.account, facebook: facebook?.account })
 				input.comments = result.comments
 				input.reportCalls = composio.calls
 				errors.push(...result.errors)
-				// Counted with the publishing flow's calls, so the month's consumption includes them.
+				// Counted with the publishing flow's calls, so the month's usage includes them.
 				if (composio.calls.total > 0) {
-					registrarPublicacao(join(projectsDir, project), { em: now.toISOString(), comando: `report ${week.label}`, composioCalls: composio.calls })
+					recordPublishingCalls(join(projectsDir, project), { at: now.toISOString(), command: `report ${week.label}`, composioCalls: composio.calls })
 				}
 			}
-			input.consumption = linhaDeConsumo(projetar(lerRegistros({ projetos: projectsDir, metricas: metricsDir }), { agora: now, offsetMin: offset }))
+			input.consumption = usageLine(projectUsage(readUsageRecords({ projects: projectsDir, metrics: metricsDir }), { now, offsetMin: offset }))
 			const { markdown, summary } = buildReport(input)
 			const out = join(reportsDir, project)
 			mkdirSync(out, { recursive: true })
@@ -667,6 +667,6 @@ if (import.meta.main) {
 			exitCode = 1
 		}
 	}
-	if (projects.length === 0) console.error("no project has a publicacao.json yet; nothing to report")
+	if (projects.length === 0) console.error("no project has a publishing.json yet; nothing to report")
 	process.exit(exitCode)
 }

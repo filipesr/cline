@@ -2,6 +2,8 @@ This is the **Cline** monorepo. Toolchain is **Bun 1.4.2** (package manager + ta
 
 Don't add `.changeset/` files or other per-PR changelog entries; changesets aren't used here. Release notes are written into the relevant `CHANGELOG.md` at release time.
 
+Names are English everywhere, Portuguese-speaking areas such as `marketing/` included: file and folder names, identifiers, code comments, JSON keys and enum values, CLI subcommands and flags. Only content stays in the language it is written for: captions, campaign and persona documents, messages shown to the operator, and prose in a README.
+
 ## Cloud Agent Instructions
 
 ### Cline CLI

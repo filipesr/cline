@@ -1,27 +1,29 @@
 {
-	"fusoHorario": "America/Sao_Paulo",
-	"offset": "-03:00",
-	"limitePorDia": 3,
+	"timezone": "America/Sao_Paulo",
+	"utcOffset": "-03:00",
+	"dailyLimit": 3,
 	"instagram": {
-		"contaComposio": null,
+		"composioAccount": null,
 		"igUserId": null,
-		"usuario": null
+		"username": null
 	},
 	"facebook": {
-		"espelhar": true,
-		"contaComposio": null,
+		"mirror": true,
+		"composioAccount": null,
 		"pageId": "1351629444696145",
-		"nome": "Party Share"
+		"name": "Party Share"
 	},
-	"legenda": {
-		"maxPalavras": 120,
+	"caption": {
+		"maxWords": 120,
 		"maxEmojis": 2,
-		"maxCaracteres": 2200,
+		"maxChars": 2200,
 		"hashtags": {
 			"min": 3,
 			"max": 5,
-			"obrigatorias": ["#partyshare"],
-			"permitidas": [
+			"required": [
+				"#partyshare"
+			],
+			"allowed": [
 				"#confraternizacao",
 				"#festadefimdeano",
 				"#endomarketing",
@@ -30,9 +32,14 @@
 				"#comunicacaointerna",
 				"#eventosdeempresa"
 			],
-			"proibidas": ["#AFestaQueVocêNãoViu", "#love", "#instagood", "#festa"]
+			"forbidden": [
+				"#AFestaQueVocêNãoViu",
+				"#love",
+				"#instagood",
+				"#festa"
+			]
 		},
-		"termosProibidos": [
+		"forbiddenTerms": [
 			"grátis",
 			"gratuito",
 			"teste gratuito",
@@ -54,14 +61,16 @@
 			"Vagas de piloto até 14/nov"
 		]
 	},
-	"legendaFacebook": {
-		"maxPalavras": 120,
+	"captionFacebook": {
+		"maxWords": 120,
 		"maxEmojis": 2,
 		"hashtags": {
 			"min": 1,
 			"max": 2,
-			"obrigatorias": ["#partyshare"],
-			"permitidas": [
+			"required": [
+				"#partyshare"
+			],
+			"allowed": [
 				"#confraternizacao",
 				"#festadefimdeano",
 				"#endomarketing",
@@ -70,9 +79,14 @@
 				"#comunicacaointerna",
 				"#eventosdeempresa"
 			],
-			"proibidas": ["#AFestaQueVocêNãoViu", "#love", "#instagood", "#festa"]
+			"forbidden": [
+				"#AFestaQueVocêNãoViu",
+				"#love",
+				"#instagood",
+				"#festa"
+			]
 		},
-		"termosProibidos": [
+		"forbiddenTerms": [
 			"grátis",
 			"gratuito",
 			"teste gratuito",

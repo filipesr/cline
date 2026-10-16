@@ -1,2 +1,0 @@
-{"em":"2026-10-15T18:57:45.080Z","comando":"publicar","post":"2026-10-15-teste-fluxo-e02","reconstruido":"do historico do post.json: publicar --so-facebook","composioCalls":{"total":2,"failed":0,"bySlug":{"FACEBOOK_CREATE_PHOTO_POST":1,"FACEBOOK_GET_POST":1},"metaTools":{}}}
-{"em":"2026-10-15T19:01:35.485Z","comando":"remover","post":"2026-10-15-teste-fluxo-e02","reconstruido":"do historico do post.json: remover","composioCalls":{"total":1,"failed":0,"bySlug":{"FACEBOOK_DELETE_POST":1},"metaTools":{}}}

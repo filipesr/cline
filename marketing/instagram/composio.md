@@ -227,7 +227,7 @@ Conclusão para a fase 2: com o Composio, DMs e comentários automatizados só s
 
 ## Como medir o consumo
 
-Hoje: `bun run consumo` soma o que os jobs de publicação e métricas registram e projeta o mês; o aviso de 70% vai ao Telegram por um schedule. Ver README → "Consumo do Composio". O que segue é o levantamento de 15/10.
+Hoje: `bun run usage` soma o que os jobs de publicação e métricas registram e projeta o mês; o aviso de 70% vai ao Telegram por um schedule. Ver README → "Consumo do Composio". O que segue é o levantamento de 15/10.
 
 ### Neste levantamento (área de consumidor, conta pessoal)
 

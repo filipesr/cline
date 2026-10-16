@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * Daily metrics collector for each project's Instagram account and Facebook
- * Page, as the publishing flow saved them in projects/<project>/publicacao.json.
+ * Page, as the publishing flow saved them in projects/<project>/publishing.json.
  * It reads insights through Composio and keeps the history in
  * metrics/<project>/<YYYY-MM-DD>.json, because the APIs only show recent windows.
  *
@@ -17,8 +17,11 @@
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
 import { join, relative, resolve } from "node:path"
-import { criarComposio } from "./composio"
-import { carregarSegredos } from "./segredos"
+import { createComposio } from "./composio"
+import { loadSecrets } from "./secrets"
+import type { CallCount } from "./usage"
+
+export type { CallCount }
 
 /** Post metrics. impressions/plays/video_views were retired by Meta in 2025. */
 export const POST_METRICS = ["views", "reach", "likes", "comments", "saved", "shares", "total_interactions"]
@@ -110,7 +113,7 @@ export type CollectOptions = {
 	lookbackDays?: number
 	demographicsEveryDays?: number
 	/**
-	 * From the project's publicacao.json. `account` picks the Composio connection when there
+	 * From the project's publishing.json. `account` picks the Composio connection when there
 	 * are several; without it the default one is used, as in the publishing flow.
 	 */
 	instagram?: { account?: string; igUserId?: string }
@@ -119,8 +122,6 @@ export type CollectOptions = {
 }
 
 // ---------- Composio calls ----------
-
-export type CallCount = { total: number; failed: number; bySlug: Record<string, number> }
 
 /** Runs one action on a connected account; every call is counted, failed ones included. */
 export type Composio = {
@@ -314,15 +315,15 @@ export function calendarIndex(projectsDir: string, baseDir: string, only?: strin
 			} catch {
 				continue
 			}
-			const publication = (isRecord(post.publicacao) ? post.publicacao : post) as Record<string, unknown>
+			const publication = (isRecord(post.publishing) ? post.publishing : post) as Record<string, unknown>
 			const instagram = isRecord(publication.instagram) ? publication.instagram : {}
 			const facebook = isRecord(publication.facebook) ? publication.facebook : {}
 			const ref: CalendarRef = {
 				project: project.name,
 				post: relative(baseDir, path),
 				...(typeof post.slug === "string" ? { slug: post.slug } : {}),
-				...(typeof post.data === "string" ? { date: post.data } : {}),
-				...(typeof post.codigo === "string" ? { code: post.codigo } : {}),
+				...(typeof post.date === "string" ? { date: post.date } : {}),
+				...(typeof post.code === "string" ? { code: post.code } : {}),
 			}
 			for (const key of [instagram.mediaId, instagram.permalink, facebook.postId, facebook.permalink]) {
 				if (typeof key === "string" && key) index.set(key, ref)
@@ -727,54 +728,54 @@ function demographicBuckets(data: unknown): Record<string, number> {
 // ---------- CLI ----------
 
 type ProjectConfig = {
-	offset?: string
-	instagram?: { contaComposio?: string | null; igUserId?: string | null }
-	facebook?: { contaComposio?: string | null; pageId?: string | null }
+	utcOffset?: string
+	instagram?: { composioAccount?: string | null; igUserId?: string | null }
+	facebook?: { composioAccount?: string | null; pageId?: string | null }
 }
 
-/** The accounts a project collects from, as the publishing flow saved them in its publicacao.json. */
+/** The accounts a project collects from, as the publishing flow saved them in its publishing.json. */
 export function projectSources(projectsDir: string, project: string): {
 	config?: ProjectConfig
 	instagram?: CollectOptions["instagram"]
 	facebook?: CollectOptions["facebook"]
 } {
-	const path = join(projectsDir, project, "publicacao.json")
+	const path = join(projectsDir, project, "publishing.json")
 	if (!existsSync(path)) return {}
 	const config = JSON.parse(readFileSync(path, "utf8")) as ProjectConfig
 	const ig = config.instagram
 	const fb = config.facebook
 	return {
 		config,
-		// Instagram counts as set up once conexao --salvar stored its account or user id; the Page, once it has an id.
+		// Instagram counts as set up once connection --save stored its account or user id; the Page, once it has an id.
 		instagram:
-			ig?.contaComposio || ig?.igUserId
-				? { ...(ig.contaComposio ? { account: ig.contaComposio } : {}), ...(ig.igUserId ? { igUserId: ig.igUserId } : {}) }
+			ig?.composioAccount || ig?.igUserId
+				? { ...(ig.composioAccount ? { account: ig.composioAccount } : {}), ...(ig.igUserId ? { igUserId: ig.igUserId } : {}) }
 				: undefined,
-		facebook: fb?.pageId ? { ...(fb.contaComposio ? { account: fb.contaComposio } : {}), pageId: fb.pageId } : undefined,
+		facebook: fb?.pageId ? { ...(fb.composioAccount ? { account: fb.composioAccount } : {}), pageId: fb.pageId } : undefined,
 	}
 }
 
 if (import.meta.main) {
-	carregarSegredos()
+	loadSecrets()
 	const base = resolve(import.meta.dir, "..")
 	const projectsDir = join(base, "projects")
 	const read = (name: string) => process.env[name]?.trim() || undefined
 	const wanted = process.argv.slice(2).filter((arg) => !arg.startsWith("-"))
-	const projects = wanted.length > 0 ? wanted : existsSync(projectsDir) ? readdirSync(projectsDir).filter((name) => existsSync(join(projectsDir, name, "publicacao.json"))) : []
+	const projects = wanted.length > 0 ? wanted : existsSync(projectsDir) ? readdirSync(projectsDir).filter((name) => existsSync(join(projectsDir, name, "publishing.json"))) : []
 	let exitCode = 0
 	for (const project of projects) {
 		try {
 			const { config, instagram, facebook } = projectSources(projectsDir, project)
-			if (!config) throw new Error(`projects/${project}/publicacao.json not found`)
+			if (!config) throw new Error(`projects/${project}/publishing.json not found`)
 			if (!instagram && !facebook) {
-				console.log(`${project}: no account in publicacao.json yet (run "publicacao.ts conexao ${project} --salvar"); skipped`)
+				console.log(`${project}: no account in publishing.json yet (run "publishing.ts connection ${project} --save"); skipped`)
 				continue
 			}
 			const { run } = await collect({
 				// One client per project, so each run counts only its own calls.
 				composio: (() => {
-					const client = criarComposio()
-					return countingComposio((slug, account, args) => client.executar(slug, args, account))
+					const client = createComposio()
+					return countingComposio((slug, account, args) => client.execute(slug, args, account))
 				})(),
 				dir: join(resolve(base, read("METRICS_DIR") ?? "metrics"), project),
 				project,
@@ -782,18 +783,18 @@ if (import.meta.main) {
 				instagram,
 				facebook,
 				now: read("METRICS_NOW") ? new Date(read("METRICS_NOW") as string) : undefined,
-				utcOffsetMinutes: parseUtcOffset(read("METRICS_UTC_OFFSET") ?? config.offset ?? "-03:00"),
+				utcOffsetMinutes: parseUtcOffset(read("METRICS_UTC_OFFSET") ?? config.utcOffset ?? "-03:00"),
 				lookbackDays: Number(read("METRICS_LOOKBACK_DAYS") ?? 7),
 				log: (line) => console.log(line),
 			})
-			if (!instagram) console.log("  instagram: no connected account in publicacao.json yet; skipped")
-			if (!facebook) console.log("  facebook: no Page in publicacao.json; skipped")
+			if (!instagram) console.log("  instagram: no connected account in publishing.json yet; skipped")
+			if (!facebook) console.log("  facebook: no Page in publishing.json; skipped")
 			if (run.status === "failed") exitCode = 1
 		} catch (error) {
 			console.error(`${project}: error: ${errorMessage(error)}`)
 			exitCode = 1
 		}
 	}
-	if (projects.length === 0) console.log("no project has a publicacao.json yet; nothing to collect")
+	if (projects.length === 0) console.log("no project has a publishing.json yet; nothing to collect")
 	process.exit(exitCode)
 }

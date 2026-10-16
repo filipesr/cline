@@ -7,7 +7,7 @@
  * Usage: bun scripts/upload-image.ts <path/to/image.(png|jpg|jpeg)> [--check]
  * Env:   R2_ENDPOINT (or S3_API), R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY,
  *        R2_BUCKET, R2_PUBLIC_BASE_URL (see marketing/instagram/README.md), read from
- *        ~/.config/cline-marketing/instagram.env when not already set (see segredos.ts)
+ *        ~/.config/cline-marketing/instagram.env when not already set (see secrets.ts)
  *
  * --check fetches the URL without credentials and fails unless it answers 200
  * with an image content-type.
@@ -15,7 +15,7 @@
 import { randomUUID } from "node:crypto"
 import { basename, extname } from "node:path"
 import { S3Client } from "bun"
-import { carregarSegredos } from "./segredos"
+import { loadSecrets } from "./secrets"
 
 const CONTENT_TYPES: Record<string, string> = {
 	".png": "image/png",
@@ -36,7 +36,7 @@ if (!filePath) fail("usage: bun scripts/upload-image.ts <image.png|image.jpg> [-
 
 // The dashboard's "S3 API" field is the endpoint with the bucket as its path,
 // so S3_API stands in for R2_ENDPOINT and, without R2_BUCKET, for the bucket too.
-carregarSegredos()
+loadSecrets()
 const read = (name: string) => process.env[name]?.trim() || undefined
 const endpointUrl = read("R2_ENDPOINT") ?? read("S3_API")
 let endpoint: URL | undefined

@@ -1,0 +1,20 @@
+{
+	"idea": "Do pedido à mudança revisada em três passos: você pede, ele propõe, você aprova",
+	"pillar": "Como funciona",
+	"format": "carousel",
+	"count": 3,
+	"aspect": "feed",
+	"variations": 3,
+	"slug": "do-pedido-a-mudanca",
+	"images": [
+		{
+			"scene": "The app icon from the reference image as a small solid 3D object on a dark walnut desk next to an open paper notebook with blank pages and a pencil resting across it, early evening, warm desk lamp light from the left, seen from slightly above, the object on the right third"
+		},
+		{
+			"scene": "The same dark walnut desk, the app icon from the reference image as a small solid 3D object in front of an open laptop whose screen glows softly and is fully out of focus, a ceramic coffee mug nearby, warm desk lamp light from the left, close shot at eye level, the object centered"
+		},
+		{
+			"scene": "The same dark walnut desk, a relaxed human hand resting on the wood beside the app icon from the reference image as a small solid 3D object, the laptop lid half closed in the background, the lamp light lower and warmer, calm finished-work mood, seen from slightly above, the object on the left third"
+		}
+	]
+}

@@ -6,7 +6,7 @@
 		"upload": "bun scripts/upload-image.ts",
 		"metrics": "bun scripts/metrics.ts",
 		"report": "bun scripts/report.ts",
-		"consumo": "bun scripts/consumo.ts",
+		"usage": "bun scripts/usage.ts",
 		"test": "bun test scripts"
 	}
 }

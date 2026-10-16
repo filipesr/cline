@@ -1,36 +1,36 @@
 {
-	"projeto": "exemplo-cline",
+	"project": "exemplo-cline",
 	"slug": "do-pedido-a-mudanca",
-	"data": "2026-10-15",
-	"ideia": "Do pedido à mudança revisada em três passos: você pede, ele propõe, você aprova",
-	"pilar": "Como funciona",
-	"formato": "carrossel",
-	"quantidade": 3,
-	"proporcao": "feed",
-	"dimensoes": {
-		"largura": 1080,
-		"altura": 1350,
-		"geracao": [
+	"date": "2026-10-15",
+	"idea": "Do pedido à mudança revisada em três passos: você pede, ele propõe, você aprova",
+	"pillar": "Como funciona",
+	"format": "carousel",
+	"count": 3,
+	"aspect": "feed",
+	"dimensions": {
+		"width": 1080,
+		"height": 1350,
+		"generation": [
 			1088,
 			1360
 		]
 	},
-	"modelo": {
-		"nome": "flux2-klein-4b",
-		"quantizar": null,
-		"passos": 4,
+	"model": {
+		"name": "flux2-klein-4b",
+		"quantize": null,
+		"steps": 4,
 		"guidance": 1,
 		"mflux": "0.22.0",
 		"cwd": "marketing/instagram"
 	},
-	"fontes": {
+	"sources": {
 		"campaign.md": "090d0f622c3d65f8",
 		"persona.md": "552adc2e2745afe8",
-		"contexto.md": "f48f8e55881151e7",
+		"context.md": "f48f8e55881151e7",
 		"assets/app-icon.png": "ae9709b94db0d53f"
 	},
-	"direcaoVisual": "calm editorial product photography, dark warm palette of charcoal and walnut wood with a single soft amber accent light, matte surfaces, shallow depth of field, 50mm lens, gentle film grain, generous negative space, minimal uncluttered composition, natural real-world materials, any screens are out of focus or out of frame",
-	"referencias": [
+	"visualDirection": "calm editorial product photography, dark warm palette of charcoal and walnut wood with a single soft amber accent light, matte surfaces, shallow depth of field, 50mm lens, gentle film grain, generous negative space, minimal uncluttered composition, natural real-world materials, any screens are out of focus or out of frame",
+	"references": [
 		"assets/app-icon.png"
 	],
 	"seeds": [
@@ -38,21 +38,21 @@
 		12620407,
 		840232434
 	],
-	"imagens": [
+	"images": [
 		{
 			"n": "01",
-			"cena": "The app icon from the reference image as a small solid 3D object on a dark walnut desk next to an open paper notebook with blank pages and a pencil resting across it, early evening, warm desk lamp light from the left, seen from slightly above, the object on the right third",
+			"scene": "The app icon from the reference image as a small solid 3D object on a dark walnut desk next to an open paper notebook with blank pages and a pencil resting across it, early evening, warm desk lamp light from the left, seen from slightly above, the object on the right third",
 			"prompt": "The app icon from the reference image as a small solid 3D object on a dark walnut desk next to an open paper notebook with blank pages and a pencil resting across it, early evening, warm desk lamp light from the left, seen from slightly above, the object on the right third. The product shown in the reference image(s) must appear exactly as it is: same shape, proportions, colors, logo and screen content. Do not redraw, restyle or invent any interface, logo or lettering. Slide 1 of 3 of one carousel series: identical palette, lighting, lens and art direction across every slide. Visual direction: calm editorial product photography, dark warm palette of charcoal and walnut wood with a single soft amber accent light, matte surfaces, shallow depth of field, 50mm lens, gentle film grain, generous negative space, minimal uncluttered composition, natural real-world materials, any screens are out of focus or out of frame. No added text, letters, words, captions, watermarks or extra logos anywhere in the image; only what is already on the reference product.",
-			"promptArquivo": "prompts/01.txt",
-			"variacoes": [
+			"promptFile": "prompts/01.txt",
+			"variations": [
 				{
 					"id": "v1",
 					"seed": 720433678,
-					"arquivo": "01-v1.jpg",
+					"file": "01-v1.jpg",
 					"bytes": 286192,
-					"qualidadeJpeg": 92,
-					"segundos": 64.5,
-					"comando": [
+					"jpegQuality": 92,
+					"seconds": 64.5,
+					"command": [
 						"mflux-generate-flux2-edit",
 						"--model",
 						"flux2-klein-4b",
@@ -71,17 +71,17 @@
 						"--image-paths",
 						"projects/exemplo-cline/assets/app-icon.png",
 						"--output",
-						"projects/exemplo-cline/posts/2026-10-15-do-pedido-a-mudanca/.bruto/01-v1.png"
+						"projects/exemplo-cline/posts/2026-10-15-do-pedido-a-mudanca/.raw/01-v1.png"
 					]
 				},
 				{
 					"id": "v2",
 					"seed": 12620407,
-					"arquivo": "01-v2.jpg",
+					"file": "01-v2.jpg",
 					"bytes": 266827,
-					"qualidadeJpeg": 92,
-					"segundos": 65.6,
-					"comando": [
+					"jpegQuality": 92,
+					"seconds": 65.6,
+					"command": [
 						"mflux-generate-flux2-edit",
 						"--model",
 						"flux2-klein-4b",
@@ -100,17 +100,17 @@
 						"--image-paths",
 						"projects/exemplo-cline/assets/app-icon.png",
 						"--output",
-						"projects/exemplo-cline/posts/2026-10-15-do-pedido-a-mudanca/.bruto/01-v2.png"
+						"projects/exemplo-cline/posts/2026-10-15-do-pedido-a-mudanca/.raw/01-v2.png"
 					]
 				},
 				{
 					"id": "v3",
 					"seed": 840232434,
-					"arquivo": "01-v3.jpg",
+					"file": "01-v3.jpg",
 					"bytes": 262171,
-					"qualidadeJpeg": 92,
-					"segundos": 64.7,
-					"comando": [
+					"jpegQuality": 92,
+					"seconds": 64.7,
+					"command": [
 						"mflux-generate-flux2-edit",
 						"--model",
 						"flux2-klein-4b",
@@ -129,25 +129,25 @@
 						"--image-paths",
 						"projects/exemplo-cline/assets/app-icon.png",
 						"--output",
-						"projects/exemplo-cline/posts/2026-10-15-do-pedido-a-mudanca/.bruto/01-v3.png"
+						"projects/exemplo-cline/posts/2026-10-15-do-pedido-a-mudanca/.raw/01-v3.png"
 					]
 				}
 			]
 		},
 		{
 			"n": "02",
-			"cena": "The same dark walnut desk, the app icon from the reference image as a small solid 3D object in front of an open laptop whose screen glows softly and is fully out of focus, a ceramic coffee mug nearby, warm desk lamp light from the left, close shot at eye level, the object centered",
+			"scene": "The same dark walnut desk, the app icon from the reference image as a small solid 3D object in front of an open laptop whose screen glows softly and is fully out of focus, a ceramic coffee mug nearby, warm desk lamp light from the left, close shot at eye level, the object centered",
 			"prompt": "The same dark walnut desk, the app icon from the reference image as a small solid 3D object in front of an open laptop whose screen glows softly and is fully out of focus, a ceramic coffee mug nearby, warm desk lamp light from the left, close shot at eye level, the object centered. The product shown in the reference image(s) must appear exactly as it is: same shape, proportions, colors, logo and screen content. Do not redraw, restyle or invent any interface, logo or lettering. Slide 2 of 3 of one carousel series: identical palette, lighting, lens and art direction across every slide. Visual direction: calm editorial product photography, dark warm palette of charcoal and walnut wood with a single soft amber accent light, matte surfaces, shallow depth of field, 50mm lens, gentle film grain, generous negative space, minimal uncluttered composition, natural real-world materials, any screens are out of focus or out of frame. No added text, letters, words, captions, watermarks or extra logos anywhere in the image; only what is already on the reference product.",
-			"promptArquivo": "prompts/02.txt",
-			"variacoes": [
+			"promptFile": "prompts/02.txt",
+			"variations": [
 				{
 					"id": "v1",
 					"seed": 720433678,
-					"arquivo": "02-v1.jpg",
+					"file": "02-v1.jpg",
 					"bytes": 259646,
-					"qualidadeJpeg": 92,
-					"segundos": 65.6,
-					"comando": [
+					"jpegQuality": 92,
+					"seconds": 65.6,
+					"command": [
 						"mflux-generate-flux2-edit",
 						"--model",
 						"flux2-klein-4b",
@@ -166,17 +166,17 @@
 						"--image-paths",
 						"projects/exemplo-cline/assets/app-icon.png",
 						"--output",
-						"projects/exemplo-cline/posts/2026-10-15-do-pedido-a-mudanca/.bruto/02-v1.png"
+						"projects/exemplo-cline/posts/2026-10-15-do-pedido-a-mudanca/.raw/02-v1.png"
 					]
 				},
 				{
 					"id": "v2",
 					"seed": 12620407,
-					"arquivo": "02-v2.jpg",
+					"file": "02-v2.jpg",
 					"bytes": 235635,
-					"qualidadeJpeg": 92,
-					"segundos": 69.8,
-					"comando": [
+					"jpegQuality": 92,
+					"seconds": 69.8,
+					"command": [
 						"mflux-generate-flux2-edit",
 						"--model",
 						"flux2-klein-4b",
@@ -195,17 +195,17 @@
 						"--image-paths",
 						"projects/exemplo-cline/assets/app-icon.png",
 						"--output",
-						"projects/exemplo-cline/posts/2026-10-15-do-pedido-a-mudanca/.bruto/02-v2.png"
+						"projects/exemplo-cline/posts/2026-10-15-do-pedido-a-mudanca/.raw/02-v2.png"
 					]
 				},
 				{
 					"id": "v3",
 					"seed": 840232434,
-					"arquivo": "02-v3.jpg",
+					"file": "02-v3.jpg",
 					"bytes": 233788,
-					"qualidadeJpeg": 92,
-					"segundos": 64.9,
-					"comando": [
+					"jpegQuality": 92,
+					"seconds": 64.9,
+					"command": [
 						"mflux-generate-flux2-edit",
 						"--model",
 						"flux2-klein-4b",
@@ -224,25 +224,25 @@
 						"--image-paths",
 						"projects/exemplo-cline/assets/app-icon.png",
 						"--output",
-						"projects/exemplo-cline/posts/2026-10-15-do-pedido-a-mudanca/.bruto/02-v3.png"
+						"projects/exemplo-cline/posts/2026-10-15-do-pedido-a-mudanca/.raw/02-v3.png"
 					]
 				}
 			]
 		},
 		{
 			"n": "03",
-			"cena": "The same dark walnut desk, a relaxed human hand resting on the wood beside the app icon from the reference image as a small solid 3D object, the laptop lid half closed in the background, the lamp light lower and warmer, calm finished-work mood, seen from slightly above, the object on the left third",
+			"scene": "The same dark walnut desk, a relaxed human hand resting on the wood beside the app icon from the reference image as a small solid 3D object, the laptop lid half closed in the background, the lamp light lower and warmer, calm finished-work mood, seen from slightly above, the object on the left third",
 			"prompt": "The same dark walnut desk, a relaxed human hand resting on the wood beside the app icon from the reference image as a small solid 3D object, the laptop lid half closed in the background, the lamp light lower and warmer, calm finished-work mood, seen from slightly above, the object on the left third. The product shown in the reference image(s) must appear exactly as it is: same shape, proportions, colors, logo and screen content. Do not redraw, restyle or invent any interface, logo or lettering. Slide 3 of 3 of one carousel series: identical palette, lighting, lens and art direction across every slide. Visual direction: calm editorial product photography, dark warm palette of charcoal and walnut wood with a single soft amber accent light, matte surfaces, shallow depth of field, 50mm lens, gentle film grain, generous negative space, minimal uncluttered composition, natural real-world materials, any screens are out of focus or out of frame. No added text, letters, words, captions, watermarks or extra logos anywhere in the image; only what is already on the reference product.",
-			"promptArquivo": "prompts/03.txt",
-			"variacoes": [
+			"promptFile": "prompts/03.txt",
+			"variations": [
 				{
 					"id": "v1",
 					"seed": 720433678,
-					"arquivo": "03-v1.jpg",
+					"file": "03-v1.jpg",
 					"bytes": 295944,
-					"qualidadeJpeg": 92,
-					"segundos": 66.4,
-					"comando": [
+					"jpegQuality": 92,
+					"seconds": 66.4,
+					"command": [
 						"mflux-generate-flux2-edit",
 						"--model",
 						"flux2-klein-4b",
@@ -261,17 +261,17 @@
 						"--image-paths",
 						"projects/exemplo-cline/assets/app-icon.png",
 						"--output",
-						"projects/exemplo-cline/posts/2026-10-15-do-pedido-a-mudanca/.bruto/03-v1.png"
+						"projects/exemplo-cline/posts/2026-10-15-do-pedido-a-mudanca/.raw/03-v1.png"
 					]
 				},
 				{
 					"id": "v2",
 					"seed": 12620407,
-					"arquivo": "03-v2.jpg",
+					"file": "03-v2.jpg",
 					"bytes": 285595,
-					"qualidadeJpeg": 92,
-					"segundos": 67.5,
-					"comando": [
+					"jpegQuality": 92,
+					"seconds": 67.5,
+					"command": [
 						"mflux-generate-flux2-edit",
 						"--model",
 						"flux2-klein-4b",
@@ -290,17 +290,17 @@
 						"--image-paths",
 						"projects/exemplo-cline/assets/app-icon.png",
 						"--output",
-						"projects/exemplo-cline/posts/2026-10-15-do-pedido-a-mudanca/.bruto/03-v2.png"
+						"projects/exemplo-cline/posts/2026-10-15-do-pedido-a-mudanca/.raw/03-v2.png"
 					]
 				},
 				{
 					"id": "v3",
 					"seed": 840232434,
-					"arquivo": "03-v3.jpg",
+					"file": "03-v3.jpg",
 					"bytes": 265012,
-					"qualidadeJpeg": 92,
-					"segundos": 67.4,
-					"comando": [
+					"jpegQuality": 92,
+					"seconds": 67.4,
+					"command": [
 						"mflux-generate-flux2-edit",
 						"--model",
 						"flux2-klein-4b",
@@ -319,64 +319,64 @@
 						"--image-paths",
 						"projects/exemplo-cline/assets/app-icon.png",
 						"--output",
-						"projects/exemplo-cline/posts/2026-10-15-do-pedido-a-mudanca/.bruto/03-v3.png"
+						"projects/exemplo-cline/posts/2026-10-15-do-pedido-a-mudanca/.raw/03-v3.png"
 					]
 				}
 			]
 		}
 	],
-	"geradoEm": "2026-10-15T17:59:41.438Z",
-	"revisao": {
-		"escolhidas": [
+	"generatedAt": "2026-10-15T17:59:41.438Z",
+	"review": {
+		"chosen": [
 			{
 				"n": "01",
-				"variacao": "v3",
+				"variation": "v3",
 				"seed": 840232434,
-				"arquivo": "final/01.jpg",
+				"file": "final/01.jpg",
 				"bytes": 262171
 			},
 			{
 				"n": "02",
-				"variacao": "v3",
+				"variation": "v3",
 				"seed": 840232434,
-				"arquivo": "final/02.jpg",
+				"file": "final/02.jpg",
 				"bytes": 233788
 			},
 			{
 				"n": "03",
-				"variacao": "v3",
+				"variation": "v3",
 				"seed": 840232434,
-				"arquivo": "final/03.jpg",
+				"file": "final/03.jpg",
 				"bytes": 265012
 			}
 		],
-		"motivo": "Conjunto v3 (mesma seed nos 3 slides): ícone fiel à referência em todos, mesma mesa, luz e enquadramento contando pedir → propor → aprovar; no slide 2 a tela está clara mas desfocada, sem nada que leia como texto, e no 3 a mão é natural e o notebook está fechando. Ressalva: no slide 3 o abajur sai de quadro e o acento âmbar fica fraco.",
-		"descartadas": [
+		"reason": "Conjunto v3 (mesma seed nos 3 slides): ícone fiel à referência em todos, mesma mesa, luz e enquadramento contando pedir → propor → aprovar; no slide 2 a tela está clara mas desfocada, sem nada que leia como texto, e no 3 a mão é natural e o notebook está fechando. Ressalva: no slide 3 o abajur sai de quadro e o acento âmbar fica fraco.",
+		"rejected": [
 			{
 				"id": "02-v1",
-				"motivo": "Bloco escuro no meio da tela do notebook que lê como título/texto."
+				"reason": "Bloco escuro no meio da tela do notebook que lê como título/texto."
 			},
 			{
 				"id": "02-v2",
-				"motivo": "Tela com um bloco que parece manchete e miniaturas de interface; vira texto inventado."
+				"reason": "Tela com um bloco que parece manchete e miniaturas de interface; vira texto inventado."
 			},
 			{
 				"id": "03-v2",
-				"motivo": "Tela do notebook acesa com interface e ícones visíveis; quebra o 'trabalho concluído' e a regra de telas desfocadas."
+				"reason": "Tela do notebook acesa com interface e ícones visíveis; quebra o 'trabalho concluído' e a regra de telas desfocadas."
 			},
 			{
 				"id": "03-v1",
-				"motivo": "Tampa do notebook vira uma massa preta cortando o quadro à direita; composição pesada."
+				"reason": "Tampa do notebook vira uma massa preta cortando o quadro à direita; composição pesada."
 			},
 			{
 				"id": "01-v1",
-				"motivo": "Só por continuidade: o conjunto v1 perde nos slides 2 e 3."
+				"reason": "Só por continuidade: o conjunto v1 perde nos slides 2 e 3."
 			},
 			{
 				"id": "01-v2",
-				"motivo": "Só por continuidade: o conjunto v2 perde nos slides 2 e 3."
+				"reason": "Só por continuidade: o conjunto v2 perde nos slides 2 e 3."
 			}
 		],
-		"revisadoEm": "2026-10-15T18:00:13.765Z"
+		"reviewedAt": "2026-10-15T18:00:13.765Z"
 	}
 }

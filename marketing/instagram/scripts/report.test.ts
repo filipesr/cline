@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import type { DailyFile, PostEntry } from "./metrics"
 import { countingComposio } from "./metrics"
-import { itensDoCalendario } from "./publicacao-regras"
+import { calendarItems } from "./publishing-rules"
 import { buildReport, commentTheme, isoWeek, parseWeek, type ReportInput, readComments, weekPosts } from "./report"
 
 const CAMPAIGN = `# Campanha
@@ -78,10 +78,10 @@ function exampleInput(overrides: Partial<ReportInput> = {}): ReportInput {
 		week: parseWeek("2026-W43"),
 		daily: exampleDaily(),
 		posts: new Map([
-			["projects/partyshare/posts/2026-10-20-telao/post.json", { pilar: "1. Telão", formato: "post", slug: "telao", data: "2026-10-20" }],
-			["projects/partyshare/posts/2026-10-22-confraternizacao/post.json", { pilar: "2. Confraternização", formato: "carrossel", slug: "confraternizacao", data: "2026-10-22" }],
+			["projects/partyshare/posts/2026-10-20-telao/post.json", { pillar: "1. Telão", format: "post", slug: "telao", date: "2026-10-20" }],
+			["projects/partyshare/posts/2026-10-22-confraternizacao/post.json", { pillar: "2. Confraternização", format: "carrossel", slug: "confraternizacao", date: "2026-10-22" }],
 		]),
-		calendar: itensDoCalendario(CAMPAIGN, 2026) ?? [],
+		calendar: calendarItems(CAMPAIGN, 2026) ?? [],
 		comments: new Map([
 			["instagram:ig1", ["Quanto custa para 200 pessoas?", "@ana.rh olha isso", "Incrível!"]],
 			["instagram:ig2", ["E o preço?", "A TI da empresa libera?"]],
@@ -101,14 +101,14 @@ describe("weeks", () => {
 		expect(isoWeek("2026-10-25").label).toBe("2026-W43")
 		expect(parseWeek("2026-W43")).toEqual({ label: "2026-W43", start: "2026-10-19", end: "2026-10-25" })
 		expect(isoWeek("2027-01-01").label).toBe("2026-W53")
-		expect(() => parseWeek("2026-43")).toThrow("AAAA-Www")
+		expect(() => parseWeek("2026-43")).toThrow("YYYY-Www")
 	})
 })
 
 describe("posts of the week", () => {
 	test("ranks the week's posts with pillar and format from post.json, the calendar or the media type", () => {
 		const rows = weekPosts(exampleInput())
-		expect(rows.map((r) => [r.network, r.label, r.pilar, r.formato, r.hour])).toEqual([
+		expect(rows.map((r) => [r.network, r.label, r.pillar, r.format, r.hour])).toEqual([
 			["instagram", "E02", "2. Confraternização", "carrossel", 20],
 			// E01 comes from the calendar line of that date and pillar; the media type wins over post.json.
 			["instagram", "E01", "1. Telão", "reels", 20],
