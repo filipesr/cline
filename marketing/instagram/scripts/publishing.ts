@@ -3,7 +3,7 @@
  * Publishing flow: from an item of the project's calendar to the post going live.
  *
  *   bun scripts/publishing.ts init       <project>
- *   bun scripts/publishing.ts connection <project> [--save] [--page "<name>"]
+ *   bun scripts/publishing.ts connection <project> [--save] [--page "<name>"] [--page-only]
  *   bun scripts/publishing.ts calendar   <project> [--date YYYY-MM-DD]
  *   bun scripts/publishing.ts draft      <project> <request.json>
  *   bun scripts/publishing.ts caption    <project> <post-dir>
@@ -353,7 +353,7 @@ async function readInstagram(composio: Composio, config: Config) {
  */
 async function connection(
 	project: string,
-	options: { save: boolean; page?: string },
+	options: { save: boolean; page?: string; pageOnly?: boolean },
 ) {
 	const config = readConfig(project);
 	const composio = countedComposio();
@@ -401,15 +401,20 @@ async function connection(
 			`Página: ${p.name} · id ${p.id}${linkedIg(p) ? ` · ligada ao IG ${linkedIg(p)}` : ""}`,
 		);
 	}
+	// The pinned Page, then the one --page names, and only then the Page linked to the Instagram
+	// Composio returned: that Instagram may belong to another business on the same login.
+	const named = options.page
+		? items.find(
+				(p) =>
+					stripAccents(String(p.name ?? "")) ===
+					stripAccents(options.page as string),
+			)
+		: undefined;
 	const chosen =
 		items.find((p) => String(p.id) === config.facebook?.pageId) ??
-		(igUserId ? items.find((p) => linkedIg(p) === igUserId) : undefined) ??
-		(options.page
-			? items.find(
-					(p) =>
-						stripAccents(String(p.name ?? "")) ===
-						stripAccents(options.page as string),
-				)
+		named ??
+		(igUserId && !options.pageOnly
+			? items.find((p) => linkedIg(p) === igUserId)
 			: undefined);
 	if (options.page && !chosen)
 		fail(`nenhuma Página se chama "${options.page}"`);
@@ -420,7 +425,12 @@ async function connection(
 	);
 
 	if (options.save) {
-		if (ig) config.instagram = { ...config.instagram, ...ig };
+		if (ig && !options.pageOnly)
+			config.instagram = { ...config.instagram, ...ig };
+		if (ig && options.pageOnly)
+			console.log(
+				`Instagram @${ig.username} não gravado (--page-only); instagram continua como estava`,
+			);
 		if (chosen) {
 			config.facebook = {
 				mirror: config.facebook?.mirror ?? true,
@@ -593,22 +603,40 @@ function caption(project: string, postDir: string) {
 	const { dir, post, save } = openPost(project, postDir);
 	const pub = publishingOf(post);
 	requireState(pub, "draft");
-	const ig = checkCaption(
-		join(dir, "caption.txt"),
-		config.caption,
-		"caption.txt",
+	const mirrors = Boolean(
+		config.facebook?.mirror && config.facebook.pageId && config.captionFacebook,
 	);
-	pub.caption = {
-		file: "caption.txt",
-		text: ig.text,
-		hashtags: ig.hashtags,
-		cta: ig.cta,
-		checkedAt: now(),
-	};
-	console.log(
-		`caption.txt ok: ${ig.words} palavras, ${ig.hashtags.length} hashtags, CTA "${ig.cta ?? "-"}"`,
-	);
-	if (config.facebook?.mirror && config.captionFacebook) {
+	// Without Instagram connected, the Page is the only destination: caption.txt is optional
+	// (checked when present, so the post is ready for Instagram later).
+	const igConnected = Boolean(config.instagram.igUserId);
+	const igFile = join(dir, "caption.txt");
+	if (!igConnected && !mirrors)
+		fail(
+			"o projeto não tem Instagram conectado nem Página espelhada: não há para onde publicar",
+		);
+	const ig =
+		igConnected || existsSync(igFile)
+			? checkCaption(igFile, config.caption, "caption.txt")
+			: undefined;
+	if (ig) {
+		pub.caption = {
+			file: "caption.txt",
+			text: ig.text,
+			hashtags: ig.hashtags,
+			cta: ig.cta,
+			checkedAt: now(),
+		};
+		console.log(
+			`caption.txt ok: ${ig.words} palavras, ${ig.hashtags.length} hashtags, CTA "${ig.cta ?? "-"}"`,
+		);
+	} else {
+		pub.caption = undefined;
+		console.log(
+			"caption.txt dispensado: o Instagram do projeto não está conectado; o post vai só para a Página",
+		);
+	}
+	let fbCta: string | undefined;
+	if (mirrors && config.captionFacebook) {
 		const fb = checkCaption(
 			join(dir, "caption-facebook.txt"),
 			config.captionFacebook,
@@ -619,11 +647,12 @@ function caption(project: string, postDir: string) {
 			text: fb.text,
 			checkedAt: now(),
 		};
+		fbCta = fb.cta;
 		console.log(
 			`caption-facebook.txt ok: ${fb.words} palavras, ${fb.hashtags.length} hashtags`,
 		);
 	}
-	logEvent(pub, "caption", ig.cta);
+	logEvent(pub, "caption", ig?.cta ?? fbCta);
 	save();
 }
 
@@ -663,21 +692,22 @@ function question(project: string, postDir: string) {
 	const { dir, post, save } = openPost(project, postDir);
 	const pub = publishingOf(post);
 	requireState(pub, "draft", "awaiting_approval");
-	if (!pub.caption)
+	const igConnected = Boolean(config.instagram.igUserId);
+	const toPage = Boolean(config.facebook?.mirror && config.facebook.pageId);
+	if (igConnected ? !pub.caption : !pub.captionFacebook)
 		fail('a legenda ainda não foi conferida; rode "publishing.ts caption"');
-	if (
-		config.facebook?.mirror &&
-		config.captionFacebook &&
-		!pub.captionFacebook
-	) {
+	if (toPage && config.captionFacebook && !pub.captionFacebook) {
 		fail("falta conferir caption-facebook.txt");
 	}
 	if (!pub.media?.length)
 		fail('as imagens ainda não têm URL pública; rode "publishing.ts host"');
+	// Only where it will really go: an Instagram that is not connected is not a destination.
 	const destination = [
-		`Instagram${config.instagram.username ? ` @${config.instagram.username}` : ""}`,
-		config.facebook?.mirror && config.facebook.pageId
-			? `Página ${config.facebook.name ?? config.facebook.pageId}`
+		igConnected
+			? `Instagram${config.instagram.username ? ` @${config.instagram.username}` : ""}`
+			: undefined,
+		toPage
+			? `Página ${config.facebook?.name ?? config.facebook?.pageId}`
 			: undefined,
 	]
 		.filter(Boolean)
@@ -690,7 +720,23 @@ function question(project: string, postDir: string) {
 		lastChangeRequest?.comment
 			? `Ajuste pedido: ${lastChangeRequest.comment}`
 			: undefined,
-		`Legenda:\n${pub.caption.text}`,
+		...(igConnected && pub.caption
+			? [
+					pub.captionFacebook && toPage
+						? `Legenda do Instagram:\n${pub.caption.text}`
+						: `Legenda:\n${pub.caption.text}`,
+				]
+			: []),
+		...(toPage && pub.captionFacebook
+			? [
+					igConnected && pub.caption
+						? `Legenda da Página:\n${pub.captionFacebook.text}`
+						: `Legenda:\n${pub.captionFacebook.text}`,
+				]
+			: []),
+		igConnected
+			? undefined
+			: "O Instagram do projeto não está conectado: este post vai só para a Página.",
 		pub.media.map((m) => `![${m.file}](${join(dir, m.file)})`).join(" "),
 	]
 		.filter(Boolean)
@@ -845,7 +891,10 @@ async function publish(
 	) {
 		fail(`a rodada ${pub.round} não foi aprovada`);
 	}
-	if (!pub.caption || !pub.media?.length)
+	const captionForTarget = options.facebookOnly
+		? (pub.captionFacebook ?? pub.caption)
+		: pub.caption;
+	if (!captionForTarget || !pub.media?.length)
 		fail("falta legenda ou mídia hospedada");
 	if (post.format === "carousel" && pub.media.length < 2)
 		fail("carrossel com menos de 2 imagens");
@@ -1158,6 +1207,7 @@ const { positionals, values } = parseArgs({
 		at: { type: "string" },
 		reschedule: { type: "boolean", default: false },
 		"facebook-only": { type: "boolean", default: false },
+		"page-only": { type: "boolean", default: false },
 	},
 });
 const [command, project, target, answer] = positionals;
@@ -1183,7 +1233,11 @@ switch (command) {
 		init(project);
 		break;
 	case "connection":
-		await connection(project, { save: values.save, page: values.page });
+		await connection(project, {
+			save: values.save,
+			page: values.page,
+			pageOnly: values["page-only"],
+		});
 		break;
 	case "calendar": {
 		const year = Number((values.date ?? new Date().toISOString()).slice(0, 4));

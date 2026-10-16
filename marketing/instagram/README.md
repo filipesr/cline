@@ -45,7 +45,7 @@ Rode tudo de `marketing/instagram/`. As chaves vêm de `~/.config/cline-marketin
 
 ```sh
 bun scripts/publishing.ts init       <project>                    # cria publishing.json com as contas em null
-bun scripts/publishing.ts connection <project> [--save] [--page "<name>"]  # contas do Composio, @, Página, limite da Meta
+bun scripts/publishing.ts connection <project> [--save] [--page "<name>"] [--page-only]  # contas do Composio, @, Página, limite da Meta
 bun scripts/publishing.ts calendar   <project> [--date YYYY-MM-DD]
 bun scripts/publishing.ts draft      <project> <request.json>     # gera (scene) ou importa (source) as imagens
 bun scripts/publishing.ts caption    <project> <post-dir>         # confere caption.txt (e caption-facebook.txt)
@@ -98,7 +98,7 @@ O passo a passo é escrito para o agente do card do Kanban, mas também pode ser
    4. lê o permalink (`INSTAGRAM_GET_IG_MEDIA`) e grava `instagram.mediaId`, `permalink`, `publishedAt` e os ids dos containers no `post.json`. Também compara a legenda publicada com a aprovada e avisa se diferirem;
    5. espelha na Página, se `facebook.mirror` estiver ligado e a Página estiver fixada: `FACEBOOK_CREATE_PHOTO_POST` para post, `FACEBOOK_CREATE_MULTI_PHOTO_POST` para carrossel, e depois `FACEBOOK_GET_POST` para o `permalink_url`. Se a Página falhar, o Instagram continua publicado, e a nova tentativa é `publish --facebook-only`.
 
-**Só na Página, sem Instagram.** Enquanto o Instagram não está conectado no Composio, `connection` avisa e segue só com o Facebook. Fixe a Página com `connection P --save --page "Party Share"`. Num post `approved`, `publish P D --facebook-only` publica só na Página, com as mesmas travas: precisa do "Aprovar" da rodada e cabe no teto de 3 por 24h, e o post publicado só na Página conta nesse teto. Se a Página falhar, o post continua `approved` e o erro fica em `facebook.error`. Num post já `published`, a mesma flag só refaz o espelho.
+**Só na Página, sem Instagram.** Enquanto o Instagram não está conectado no Composio, `connection` avisa e segue só com o Facebook. Fixe a Página com `connection P --save --page "Party Share"`. Sem Instagram conectado, o `caption` não exige `caption.txt` (confere se existir), e a pergunta de aprovação mostra só a Página como destino, com a legenda dela. Num post `approved`, `publish P D --facebook-only` publica só na Página, com as mesmas travas: precisa do "Aprovar" da rodada e cabe no teto de 3 por 24h, e o post publicado só na Página conta nesse teto. Se a Página falhar, o post continua `approved` e o erro fica em `facebook.error`. Num post já `published`, a mesma flag só refaz o espelho.
 
 O agendamento recorrente automático está fora desta fase. Um post `scheduled` vai ao ar quando alguém roda `publish` de novo no horário marcado, à mão ou por um card.
 
@@ -213,7 +213,7 @@ Atenção: para posts de feed, a Graph API do Instagram só aceita JPEG oficialm
 | `facebook` | `espelhar`, a conta e a Página. Sem Página fixada, não há espelho |
 | `caption`, `captionFacebook` | Regras conferidas por `caption`: `maxWords`, `maxEmojis`, `hashtags` (`min`, `max`, `required`, `allowed`, `forbidden`), `forbiddenTerms`, `ctas` e `link` |
 
-Um projeto novo ganha o arquivo com `bun scripts/publishing.ts init <project>`, que cria a pasta do projeto se preciso e nunca sobrescreve um `publishing.json` existente. O `campaign.md` pode chegar depois: sem ele, o `init` só avisa, e nenhum post passa no `caption` até as regras serem preenchidas. Ele nasce com todos os ids em `null`. Depois, `connection <project>` mostra as contas e as Páginas que o Composio enxerga, e `connection <project> --save --page "<nome>"` grava `composioAccount`, `igUserId`, `username` e `pageId`. A Página nunca é escolhida por palpite, mas o Instagram gravado é o que o Composio devolver: confira o @ na saída sem `--save` antes de gravar. As regras de legenda (`caption`, `captionFacebook`) começam vazias e saem do `campaign.md`. Não copie o arquivo de outro projeto: ele traz as contas e os ids do outro.
+Um projeto novo ganha o arquivo com `bun scripts/publishing.ts init <project>`, que cria a pasta do projeto se preciso e nunca sobrescreve um `publishing.json` existente. O `campaign.md` pode chegar depois: sem ele, o `init` só avisa, e nenhum post passa no `caption` até as regras serem preenchidas. Ele nasce com todos os ids em `null`. Depois, `connection <project>` mostra as contas e as Páginas que o Composio enxerga, e `connection <project> --save --page "<nome>"` grava `composioAccount`, `igUserId`, `username` e `pageId`. A Página do projeto é a já fixada, depois a que `--page` nomear e só então a ligada ao Instagram que o Composio devolver. O Instagram gravado é o que o Composio devolver: confira o @ na saída sem `--save`. Se ele for de outro negócio, ou se o projeto só usa a Página, grave com `--page-only`, que fixa a Página e deixa `instagram` como está. As regras de legenda (`caption`, `captionFacebook`) começam vazias e saem do `campaign.md`. Não copie o arquivo de outro projeto: ele traz as contas e os ids do outro.
 
 ### Dependências do fluxo
 

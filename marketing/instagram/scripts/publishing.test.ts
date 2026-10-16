@@ -5,6 +5,7 @@
  */
 import {
 	afterAll,
+	afterEach,
 	beforeAll,
 	beforeEach,
 	describe,
@@ -241,6 +242,9 @@ beforeAll(() => {
 					},
 				});
 			switch (slug) {
+				case "INSTAGRAM_GET_USER_INFO":
+					// The Instagram Composio returns belongs to Party Share's business, linked to its Page.
+					return ok({ id: "17841499999999999", username: "partyshare_ig" });
 				case "INSTAGRAM_GET_IG_USER_CONTENT_PUBLISHING_LIMIT":
 					return ok({
 						data: [
@@ -272,7 +276,11 @@ beforeAll(() => {
 				case "FACEBOOK_LIST_MANAGED_PAGES":
 					return ok({
 						data: [
-							{ id: "1351629444696145", name: "Party Share" },
+							{
+								id: "1351629444696145",
+								name: "Party Share",
+								instagram_business_account: { id: "17841499999999999" },
+							},
 							{ id: "999", name: "il Burger" },
 						],
 					});
@@ -510,7 +518,12 @@ describe("publishing flow", () => {
 			"Pedir ajuste",
 			"Descartar",
 		]);
-		expect(question.question).toContain("Legenda:\nA confraternização");
+		// Instagram and the Page each get their own caption, labeled.
+		expect(question.question).toContain(
+			"Legenda do Instagram:\nA confraternização",
+		);
+		expect(question.question).toContain("Legenda da Página:\n");
+		expect(question.question).toContain("para Instagram @test + Página Test?");
 		expect(question.question).toContain(
 			`![final/01.jpg](${join(dir, "final/01.jpg")})`,
 		);
@@ -803,5 +816,91 @@ describe.if(existsSync(MFLUX_PYTHON))("draft with ready images", () => {
 		expect(r.code).toBe(1);
 		expect(r.stderr).toContain("mistura");
 		expect(existsSync(join(POSTS, "2026-10-30-mixed"))).toBe(false);
+	});
+});
+
+describe("a project whose Instagram is not connected", () => {
+	const file = join(PROJECT_DIR, "publishing.json");
+	let before = "";
+	beforeEach(() => {
+		before = readFileSync(file, "utf8");
+		const config = JSON.parse(before);
+		config.instagram = {
+			composioAccount: null,
+			igUserId: null,
+			username: null,
+		};
+		writeFileSync(file, JSON.stringify(config));
+	});
+	afterEach(() => writeFileSync(file, before));
+
+	test("caption does not need caption.txt, and the question names only the Page", async () => {
+		const dir = createPost("2026-10-23-page-caption", { format: "post" });
+		rmSync(join(dir, "caption.txt"));
+		const checked = await run("caption", PROJECT, dir);
+		expect(checked.code).toBe(0);
+		expect(checked.stdout).toContain("caption.txt dispensado");
+		const r = await run("question", PROJECT, dir);
+		expect(r.code).toBe(0);
+		const text = JSON.parse(r.stdout).questions[0].question as string;
+		expect(text).toContain("para Página Test?");
+		expect(text).not.toContain("Instagram @");
+		expect(text).toContain(
+			"Legenda:\nA confraternização acontece uma vez. Solicitar",
+		);
+		expect(text).toContain("vai só para a Página");
+	});
+
+	test("an approved Page-only post publishes with --facebook-only without an Instagram caption", async () => {
+		const dir = createPost("2026-10-23-page-publish", { format: "post" });
+		rmSync(join(dir, "caption.txt"));
+		for (const step of [
+			["caption", PROJECT, dir],
+			["question", PROJECT, dir],
+			["decision", PROJECT, dir, "approve"],
+		]) {
+			const r = await run(...step);
+			expect(r.code).toBe(0);
+		}
+		const r = await run("publish", PROJECT, dir, "--facebook-only");
+		expect(r.code).toBe(0);
+		expect(readPost("2026-10-23-page-publish").publishing.state).toBe(
+			"published",
+		);
+	});
+});
+
+describe("connection picks the Page it is told to", () => {
+	const file = join(PROJECT_DIR, "publishing.json");
+	let before = "";
+	beforeEach(() => {
+		before = readFileSync(file, "utf8");
+		const config = JSON.parse(before);
+		config.facebook.pageId = null;
+		writeFileSync(file, JSON.stringify(config));
+	});
+	afterEach(() => writeFileSync(file, before));
+
+	test("--page wins over the Page linked to the Instagram Composio returned", async () => {
+		const r = await run("connection", PROJECT, "--save", "--page", "il Burger");
+		expect(r.code).toBe(0);
+		const config = JSON.parse(readFileSync(file, "utf8"));
+		expect(config.facebook.pageId).toBe("999");
+	});
+
+	test("--page-only saves the Page and leaves instagram as it was", async () => {
+		const r = await run(
+			"connection",
+			PROJECT,
+			"--save",
+			"--page",
+			"il Burger",
+			"--page-only",
+		);
+		expect(r.code).toBe(0);
+		expect(r.stdout).toContain("não gravado (--page-only)");
+		const config = JSON.parse(readFileSync(file, "utf8"));
+		expect(config.facebook.pageId).toBe("999");
+		expect(config.instagram).toEqual(JSON.parse(before).instagram);
 	});
 });
