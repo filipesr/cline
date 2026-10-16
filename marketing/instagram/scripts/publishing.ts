@@ -2,6 +2,7 @@
 /**
  * Publishing flow: from an item of the project's calendar to the post going live.
  *
+ *   bun scripts/publishing.ts init       <project>
  *   bun scripts/publishing.ts connection <project> [--save] [--page "<name>"]
  *   bun scripts/publishing.ts calendar   <project> [--date YYYY-MM-DD]
  *   bun scripts/publishing.ts draft      <project> <request.json>
@@ -163,7 +164,7 @@ function readConfig(project: string): Config {
 	const path = join(projectDir(project), "publishing.json");
 	if (!existsSync(path)) {
 		fail(
-			`${rel(path)} não existe; copie o de outro projeto e ajuste as regras deste`,
+			`${rel(path)} não existe; crie com "publishing.ts init ${project}" e preencha as contas com "connection ${project} --save"`,
 		);
 	}
 	return readJson<Config>(path);
@@ -251,6 +252,55 @@ function run(args: string[], options?: { capture?: boolean }) {
 			`"bun ${args.map((a) => relative(ROOT, a) || a).join(" ")}" saiu com ${r.exitCode}`,
 		);
 	return options?.capture ? (r.stdout?.toString() ?? "").trim() : "";
+}
+
+// ---------------------------------------------------------------------------------------------
+// Init
+
+/**
+ * The project's publishing.json, before any account is known. Ids stay null: only
+ * `connection --save` fills them, from what Composio returns, so a project never starts with
+ * another project's accounts. The caption rules start empty and must come from campaign.md.
+ */
+function initialConfig(): Config {
+	const emptyRules = (): CaptionRules => ({
+		maxWords: 120,
+		maxEmojis: 2,
+		maxChars: 2200,
+		hashtags: { min: 3, max: 5, required: [], allowed: [], forbidden: [] },
+		forbiddenTerms: [],
+		ctas: [],
+	});
+	return {
+		timezone: "America/Sao_Paulo",
+		utcOffset: "-03:00",
+		dailyLimit: 3,
+		instagram: { composioAccount: null, igUserId: null, username: null },
+		facebook: { mirror: true, composioAccount: null, pageId: null, name: null },
+		caption: emptyRules(),
+		captionFacebook: {
+			...emptyRules(),
+			hashtags: { min: 1, max: 2, required: [], allowed: [], forbidden: [] },
+		},
+	};
+}
+
+function init(project: string) {
+	const dir = projectDir(project);
+	const path = join(dir, "publishing.json");
+	if (existsSync(path))
+		fail(`${rel(path)} já existe; ele não é recriado (edite ou apague antes)`);
+	if (!existsSync(join(dir, "campaign.md")))
+		fail(
+			`o projeto ${project} não tem campaign.md; as regras de legenda saem dele`,
+		);
+	writeJson(path, initialConfig());
+	console.log(`Criado ${rel(path)}, com as contas em null.
+Próximos passos:
+  1. bun scripts/publishing.ts connection ${project}                       # só lê: contas e Páginas que o Composio enxerga
+  2. bun scripts/publishing.ts connection ${project} --save --page "<nome>"  # grava composioAccount, igUserId, username e pageId
+  3. Preencha caption e captionFacebook (hashtags, forbiddenTerms, ctas, link) a partir de campaign.md
+  4. Ajuste timezone, utcOffset e dailyLimit se o projeto não for de São Paulo ou tiver outro teto`);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -411,11 +461,32 @@ function readRequest(path: string) {
 	return request;
 }
 
+/**
+ * Which images.ts action makes the post's images: `generate` when the request describes scenes
+ * for mflux, `import` when it points at ready images (card attachment, file or URL).
+ */
+function imageAction(request: Record<string, unknown>) {
+	const images = Array.isArray(request.images)
+		? (request.images as { scene?: unknown; source?: unknown }[])
+		: [];
+	const sources = images.filter(
+		(i) => typeof i.source === "string" && i.source.trim(),
+	).length;
+	const scenes = images.filter(
+		(i) => typeof i.scene === "string" && i.scene.trim(),
+	).length;
+	if (sources && scenes)
+		fail(
+			"o pedido mistura `scene` e `source`; use um ou outro em todas as imagens",
+		);
+	return sources ? "import" : "generate";
+}
+
 function requestDir(project: string, request: Record<string, unknown>) {
 	return join(projectDir(project), "posts", `${request.date}-${request.slug}`);
 }
 
-/** Generates the images with the project's engine (scripts/images.ts) and puts the post in the flow. */
+/** Makes the images with the project's engine (images.ts generate or import) and puts the post in the flow. */
 function draft(project: string, requestFile: string) {
 	const request = readRequest(requestFile);
 	const dir = requestDir(project, request);
@@ -424,7 +495,8 @@ function draft(project: string, requestFile: string) {
 	}
 	if (!existsSync(IMAGES))
 		fail(`motor de imagens não encontrado: ${rel(IMAGES)}`);
-	run([IMAGES, "generate", project, resolve(requestFile)]);
+	const action = imageAction(request);
+	run([IMAGES, action, project, resolve(requestFile)]);
 	const { post, save } = openPost(project, dir);
 	post.publishing = {
 		state: "draft",
@@ -436,7 +508,9 @@ function draft(project: string, requestFile: string) {
 	logEvent(post.publishing, "draft", "rodada 1");
 	save();
 	console.log(
-		`\nRascunho em ${rel(dir)}. Próximo: revisar e escolher as variações (images.ts review/choose), escrever caption.txt.`,
+		action === "import"
+			? `\nRascunho em ${rel(dir)}. Próximo: conferir final/, escrever caption.txt.`
+			: `\nRascunho em ${rel(dir)}. Próximo: revisar e escolher as variações (images.ts review/choose), escrever caption.txt.`,
 	);
 }
 
@@ -468,7 +542,7 @@ function redo(
 			"request.json",
 		);
 		writeJson(tempFile, request);
-		run([IMAGES, "generate", project, tempFile, "--force"]);
+		run([IMAGES, imageAction(request), project, tempFile, "--force"]);
 		const reopened = openPost(project, dir);
 		reopened.post.publishing = {
 			...previous,
@@ -1083,7 +1157,7 @@ const { positionals, values } = parseArgs({
 const [command, project, target, answer] = positionals;
 if (!command || !project) {
 	fail(
-		"uso: publishing.ts <connection|calendar|draft|caption|host|question|decision|redo|quota|publish|remove|status> <project> …",
+		"uso: publishing.ts <init|connection|calendar|draft|caption|host|question|decision|redo|quota|publish|remove|status> <project> …",
 	);
 }
 const required = (value: string | undefined, name: string) =>
@@ -1099,6 +1173,9 @@ if (["connection", "publish", "remove"].includes(command)) {
 }
 
 switch (command) {
+	case "init":
+		init(project);
+		break;
 	case "connection":
 		await connection(project, { save: values.save, page: values.page });
 		break;

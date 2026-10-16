@@ -52,3 +52,13 @@ Tudo é por projeto, em `marketing/instagram/projects/<project>/`: `campaign.md`
    `--pick` aceita `v2` (todas as imagens) ou `01=v2,02=v2,03=v1`. A escolha, o motivo e os descartes vão para `post.json`, e as imagens escolhidas são copiadas para `final/NN.jpg`, conferidas como JPEG sRGB, abaixo de 8 MB e nas dimensões exatas.
 
 Para refazer um post com as mesmas seeds: adicione `"seeds": [...]` ao pedido (copiadas do `post.json`) e rode `generate ... --force`.
+
+## Imagem pronta, sem gerar
+
+Quando a imagem já existe (o anexo de um card do Kanban, um arquivo, uma URL), o pedido traz `images[].source` em vez de `scene`:
+
+```sh
+bun marketing/instagram/scripts/images.ts import partyshare <request.json> [--force]
+```
+
+Cada `source` é baixado ou copiado, recortado no centro para o tamanho exato do formato (feed 1080x1350, `square` 1080x1080), convertido para JPEG sRGB abaixo de 8 MB e gravado direto em `final/NN.jpg`. O `post.json` sai com `origin: "import"` e com `review.chosen` preenchido, então `review` e `choose` não se aplicam. O comando avisa quando o recorte cortou as bordas (`images[].cropped`). Aceita JPEG, PNG e WebP até 25 MB; gif não. O `publishing.ts draft` escolhe sozinho entre `generate` e `import` pelo pedido.

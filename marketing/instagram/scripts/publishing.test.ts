@@ -689,3 +689,122 @@ async function createApproved(
 	}
 	return dir;
 }
+
+describe("init", () => {
+	const other = `test-init-${process.pid}`;
+	const otherDir = join(ROOT, "projects", other);
+
+	afterAll(() => rmSync(otherDir, { recursive: true, force: true }));
+
+	test("creates publishing.json with every account null, and never overwrites it", async () => {
+		mkdirSync(otherDir, { recursive: true });
+		cpSync(
+			join(ROOT, "projects/partyshare/campaign.md"),
+			join(otherDir, "campaign.md"),
+		);
+		const first = await run("init", other);
+		expect(first.code).toBe(0);
+		const config = JSON.parse(
+			readFileSync(join(otherDir, "publishing.json"), "utf8"),
+		);
+		expect(config.instagram).toEqual({
+			composioAccount: null,
+			igUserId: null,
+			username: null,
+		});
+		expect(config.facebook.pageId).toBeNull();
+		expect(config.caption.ctas).toEqual([]);
+		expect(first.stdout).toContain(`connection ${other} --save`);
+
+		const second = await run("init", other);
+		expect(second.code).toBe(1);
+		expect(second.stderr).toContain("já existe");
+	});
+
+	test("a project without publishing.json points at init", async () => {
+		const bare = join(ROOT, "projects", `${other}-bare`);
+		mkdirSync(bare, { recursive: true });
+		try {
+			const r = await run("quota", `${other}-bare`);
+			expect(r.code).toBe(1);
+			expect(r.stderr).toContain(`publishing.ts init ${other}-bare`);
+		} finally {
+			rmSync(bare, { recursive: true, force: true });
+		}
+	});
+});
+
+const MFLUX_PYTHON =
+	process.env.MFLUX_PYTHON ??
+	join(process.env.HOME ?? "", ".local/share/uv/tools/mflux/bin/python");
+const ASSET = join(ROOT, "projects/exemplo-cline/assets/app-icon.png");
+
+describe.if(existsSync(MFLUX_PYTHON))("draft with ready images", () => {
+	const request = (name: string, images: Record<string, string>[]) => {
+		const path = join(PROJECT_DIR, `${name}.json`);
+		writeFileSync(
+			path,
+			JSON.stringify({
+				idea: "imagem da task",
+				pillar: "2. Confraternização",
+				format: images.length > 1 ? "carousel" : "post",
+				count: images.length,
+				slug: name,
+				date: "2026-10-30",
+				images,
+			}),
+		);
+		return path;
+	};
+
+	test("a local file becomes final/01.jpg at the feed size and the post enters the flow", async () => {
+		const r = await run(
+			"draft",
+			PROJECT,
+			request("from-file", [{ source: ASSET }]),
+		);
+		expect(r.code).toBe(0);
+		const post = readPost("2026-10-30-from-file");
+		expect(post.origin).toBe("import");
+		expect(post.review.chosen).toEqual([
+			expect.objectContaining({ n: "01", file: "final/01.jpg", source: ASSET }),
+		]);
+		expect(post.publishing.state).toBe("draft");
+		expect(post.images[0].cropped).toBe(true);
+		const jpeg = readFileSync(join(POSTS, "2026-10-30-from-file/final/01.jpg"));
+		expect(jpeg.subarray(0, 2)).toEqual(Buffer.from([0xff, 0xd8]));
+	});
+
+	test("a URL is downloaded and imported the same way", async () => {
+		const images = Bun.serve({
+			port: 0,
+			fetch: () =>
+				new Response(Bun.file(ASSET), {
+					headers: { "content-type": "image/png" },
+				}),
+		});
+		try {
+			const url = `http://localhost:${images.port}/photo.png`;
+			const r = await run(
+				"draft",
+				PROJECT,
+				request("from-url", [{ source: url }]),
+			);
+			expect(r.code).toBe(0);
+			expect(readPost("2026-10-30-from-url").review.chosen[0].source).toBe(url);
+		} finally {
+			images.stop(true);
+		}
+	});
+
+	test("a request mixing scene and source is refused before anything runs", async () => {
+		const r = await run(
+			"draft",
+			PROJECT,
+			request("mixed", [{ source: ASSET }, { scene: "a party" }]),
+		);
+		expect(r.code).toBe(1);
+		expect(r.stderr).toContain("mistura");
+		expect(existsSync(join(POSTS, "2026-10-30-mixed"))).toBe(false);
+	});
+});

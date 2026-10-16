@@ -44,18 +44,20 @@ O estado de cada post fica em `post.json → publishing.state`:
 Rode tudo de `marketing/instagram/`. As chaves vêm de `~/.config/cline-marketing/instagram.env` (ver [Onde ficam as chaves](#onde-ficam-as-chaves)).
 
 ```sh
-bun scripts/publishing.ts connection    <project> [--save]        # contas do Composio, @, Página, limite da Meta
-bun scripts/publishing.ts calendar <project> [--date YYYY-MM-DD]
-bun scripts/publishing.ts draft   <project> <request.json>     # gera as imagens pelo motor do projeto
-bun scripts/publishing.ts caption    <project> <post-dir>   # confere caption.txt (e caption-facebook.txt)
-bun scripts/publishing.ts host   <project> <post-dir>   # envia final/*.jpg e guarda as URLs públicas
-bun scripts/publishing.ts question   <project> <post-dir>   # imprime o AskUserQuestion do card
-bun scripts/publishing.ts decision    <project> <post-dir> <Aprovar|Pedir ajuste|Descartar> [--comment "..."]
-bun scripts/publishing.ts redo    <project> <post-dir> [--request new.json] [--caption-only]
-bun scripts/publishing.ts quota       <project> [--at YYYY-MM-DDTHH:MM]
-bun scripts/publishing.ts publish   <project> <post-dir> [--reschedule] [--facebook-only]
-bun scripts/publishing.ts remove    <project> <post-dir>
+bun scripts/publishing.ts init       <project>                    # cria publishing.json com as contas em null
+bun scripts/publishing.ts connection <project> [--save] [--page "<name>"]  # contas do Composio, @, Página, limite da Meta
+bun scripts/publishing.ts calendar   <project> [--date YYYY-MM-DD]
+bun scripts/publishing.ts draft      <project> <request.json>     # gera (scene) ou importa (source) as imagens
+bun scripts/publishing.ts caption    <project> <post-dir>         # confere caption.txt (e caption-facebook.txt)
+bun scripts/publishing.ts host       <project> <post-dir>         # envia final/*.jpg e guarda as URLs públicas
+bun scripts/publishing.ts question   <project> <post-dir>         # imprime o AskUserQuestion do card
+bun scripts/publishing.ts decision   <project> <post-dir> <Aprovar|Pedir ajuste|Descartar> [--comment "..."]
+bun scripts/publishing.ts redo       <project> <post-dir> [--request new.json] [--caption-only]
+bun scripts/publishing.ts quota      <project> [--at YYYY-MM-DDTHH:MM]
+bun scripts/publishing.ts publish    <project> <post-dir> [--reschedule] [--facebook-only]
+bun scripts/publishing.ts remove     <project> <post-dir>
 bun scripts/publishing.ts status     <project> <post-dir>
+bun scripts/social.ts <project> <SLUG> ['<json args>'] [--write]  # uma ação do Composio: comentários, respostas, mensagens, reações, insights
 bun test scripts                                                  # regras + fluxo contra um Composio falso
 ```
 
@@ -67,9 +69,11 @@ O passo a passo é escrito para o agente do card do Kanban, mas também pode ser
 2. **Rascunho.**
    - Leia `projects/P/campaign.md`. Ele traz o tom, a persona, a direção visual e o que nunca dizer.
    - Rode `bun scripts/images.ts brief P <request.json>`.
-   - Escreva o pedido. Ele tem os campos de `images.ts` (`idea`, `pillar`, `format`, `count`, `images[].scene`) e também `slug` e `date`, que são obrigatórios aqui.
-   - Rode `bun scripts/publishing.ts draft P <request.json>`. As imagens vêm do motor de imagens do projeto, `scripts/images.ts`, e não de HTML/CSS.
-   - Para revisar as variações e marcar a escolhida, rode `bun scripts/images.ts review P D` e `bun scripts/images.ts choose P D --pick … --reason …`. A escolhida vai para `D/final/NN.jpg`.
+   - Escreva o pedido. Ele tem os campos de `images.ts` (`idea`, `pillar`, `format`, `count`, `images[]`) e também `slug` e `date`, que são obrigatórios aqui. Cada item de `images[]` traz **um** destes:
+     - `scene`: a cena em inglês, para o mflux gerar (FLUX.2 klein);
+     - `source`: uma imagem pronta, seja o caminho de um anexo do card (o prompt do card lista em "Attached reference images"), um arquivo do repositório ou uma URL `http(s)`. JPEG, PNG ou WebP, até 25 MB.
+   - Rode `bun scripts/publishing.ts draft P <request.json>`. Com `scene`, as imagens vêm de `images.ts generate`, e não de HTML/CSS. Com `source`, `images.ts import` recorta cada imagem no centro para o tamanho do post (1080x1350 no feed), converte para JPEG sRGB abaixo de 8 MB e a põe em `D/final/NN.jpg`. Um pedido que mistura `scene` e `source` é recusado.
+   - Com `scene`, revise as variações e marque a escolhida com `bun scripts/images.ts review P D` e `bun scripts/images.ts choose P D --pick … --reason …`. A escolhida vai para `D/final/NN.jpg`. Com `source`, não há variações: abra `final/` e confira o recorte, que o comando avisa quando cortou as bordas.
 3. **Legenda.**
    - Escreva `D/caption.txt` no tom da campanha: um único CTA e as hashtags no fim.
    - Se o projeto espelha na Página, escreva também `D/caption-facebook.txt`, com no máximo 2 hashtags e o link com `utm_source=facebook`.
@@ -209,7 +213,7 @@ Atenção: para posts de feed, a Graph API do Instagram só aceita JPEG oficialm
 | `facebook` | `espelhar`, a conta e a Página. Sem Página fixada, não há espelho |
 | `caption`, `captionFacebook` | Regras conferidas por `caption`: `maxWords`, `maxEmojis`, `hashtags` (`min`, `max`, `required`, `allowed`, `forbidden`), `forbiddenTerms`, `ctas` e `link` |
 
-Um projeto novo começa com uma cópia do `publishing.json` de outro projeto. As regras de legenda dessa cópia têm de ser trocadas pelas da campanha do projeto novo.
+Um projeto novo ganha o arquivo com `bun scripts/publishing.ts init <project>`, que exige o `campaign.md` e nunca sobrescreve um `publishing.json` existente. Ele nasce com todos os ids em `null`. Depois, `connection <project>` mostra as contas e as Páginas que o Composio enxerga, e `connection <project> --save --page "<nome>"` grava `composioAccount`, `igUserId`, `username` e `pageId`. As regras de legenda (`caption`, `captionFacebook`) começam vazias e saem do `campaign.md`. Não copie o arquivo de outro projeto: ele traz as contas e os ids do outro.
 
 ### Dependências do fluxo
 
@@ -221,6 +225,23 @@ Um projeto novo começa com uma cópia do `publishing.json` de outro projeto. As
 | Foto na pergunta do card, no Kanban | Kanban, branch `feat/question-images`: tira as `![](…)` do `AskUserQuestion` e as manda no aviso | — |
 
 Para o Telegram mostrar a foto, o board do Kanban e o conector do Telegram (`cline connect`) precisam estar rodando com essas mudanças. Sem elas, a pergunta chega só com o texto: a aprovação funciona, mas sem a imagem.
+
+## Interações (comentários, respostas, mensagens, reações)
+
+`scripts/social.ts` roda uma ação do Composio na conta do projeto e imprime o `data` dela em JSON. É o caminho para tudo que não é publicar: o agente do card não escreve cliente próprio nem chama o MCP direto.
+
+```sh
+bun scripts/social.ts partyshare FACEBOOK_GET_PAGE_POSTS '{"page_id":"$pageId","limit":10}'
+bun scripts/social.ts partyshare FACEBOOK_CREATE_COMMENT '{"object_id":"<commentId>","message":"Obrigado!"}' --write
+```
+
+- **Conta e ids do projeto.** A conta vem de `publishing.json` (`instagram`/`facebook.composioAccount`). `"$pageId"` e `"$igUserId"` nos argumentos viram os ids do projeto.
+- **Leitura passa direto; escrita pede `--write`.** Ações `GET_`, `LIST_`, `FETCH_` e `SEARCH_` rodam como estão. Qualquer outra muda algo público (comentário, resposta, curtida, mensagem) e só roda com `--write`.
+- **Publicar não passa por aqui.** Criar, agendar, editar e apagar posts, as ações deprecadas, a administração da Página e as meta tools `COMPOSIO_*` são recusadas com o caminho certo.
+- **Sem Instagram conectado** (`instagram.igUserId` em `null`), as ações `INSTAGRAM_*` param antes de chamar e dizem quem conecta.
+- **Cada execução** entra em `projects/<project>/composio-calls.jsonl` com `"command": "social"`, então conta no consumo.
+
+As ações, os parâmetros e as armadilhas de cada uma estão em `composio.md` e na skill `publishing-social-posts`.
 
 ## Métricas diárias
 

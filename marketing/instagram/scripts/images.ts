@@ -4,6 +4,7 @@
  *
  *   bun marketing/instagram/scripts/images.ts brief     <project> <request.json>
  *   bun marketing/instagram/scripts/images.ts generate  <project> <request.json> [--variations N] [--force]
+ *   bun marketing/instagram/scripts/images.ts import    <project> <request.json> [--force]
  *   bun marketing/instagram/scripts/images.ts review    <project> <post-dir>
  *   bun marketing/instagram/scripts/images.ts choose    <project> <post-dir> --pick v2 --reason "..." [--reject "01-v1=reason"]...
  *
@@ -69,7 +70,11 @@ type Request = {
 	seeds?: number[];
 	/** File names in assets/. Omitted: every asset of the project. []: none. */
 	references?: string[];
-	images?: { scene?: string }[];
+	/**
+	 * `scene` is written for `generate`. `source` is a ready image for `import`: a local path
+	 * (an image attached to the Kanban card, a file in the repo) or an http(s) URL.
+	 */
+	images?: { scene?: string; source?: string }[];
 };
 
 type Variation = {
@@ -561,6 +566,182 @@ async function generate(
 	);
 }
 
+// ---------------------------------------------------------------------------- import
+
+const MAX_SOURCE_BYTES = 25 * 1024 * 1024;
+const EXTENSION_BY_MIME: Record<string, string> = {
+	"image/jpeg": ".jpg",
+	"image/png": ".png",
+	"image/webp": ".webp",
+};
+
+/** Copies a local source, or downloads a URL, into `rawDir`; returns the local copy. */
+async function fetchSource(source: string, rawDir: string, n: string) {
+	if (/^https?:\/\//i.test(source)) {
+		let response: Response;
+		try {
+			response = await fetch(source, { signal: AbortSignal.timeout(30_000) });
+		} catch (error) {
+			fail(`não consegui baixar ${source}: ${(error as Error).message}`);
+		}
+		if (!response.ok) fail(`${source} respondeu ${response.status}`);
+		const mime = (response.headers.get("content-type") ?? "")
+			.split(";")[0]
+			.trim()
+			.toLowerCase();
+		const extension = EXTENSION_BY_MIME[mime];
+		if (!extension)
+			fail(`${source} não é JPEG, PNG nem WebP (content-type "${mime}")`);
+		const body = Buffer.from(await response.arrayBuffer());
+		if (body.length > MAX_SOURCE_BYTES)
+			fail(`${source} passa de ${MAX_SOURCE_BYTES / 1024 / 1024} MB`);
+		const path = join(rawDir, `${n}-source${extension}`);
+		writeFileSync(path, body);
+		return path;
+	}
+	const path = resolve(source);
+	if (!existsSync(path)) fail(`imagem não encontrada: ${source}`);
+	const extension = extname(path).toLowerCase();
+	if (!IMAGE_EXTENSIONS.has(extension))
+		fail(`${source}: só JPEG, PNG ou WebP (gif e outros formatos não servem)`);
+	if (statSync(path).size > MAX_SOURCE_BYTES)
+		fail(`${source} passa de ${MAX_SOURCE_BYTES / 1024 / 1024} MB`);
+	const copy = join(rawDir, `${n}-source${extension}`);
+	copyFileSync(path, copy);
+	return copy;
+}
+
+/** Checks a final JPEG the way Instagram needs it; fails naming every problem. */
+function verifyFinal(
+	path: string,
+	dimensions: { width: number; height: number },
+	label: string,
+) {
+	const check = pixels("verify", path);
+	const problems = [
+		check.format !== "JPEG" && "não é JPEG",
+		(check.width !== dimensions.width || check.height !== dimensions.height) &&
+			`tem ${check.width}x${check.height}`,
+		!/srgb/i.test(check.icc ?? "") && `perfil ${check.icc ?? "ausente"}`,
+		check.bytes >= 8 * 1024 * 1024 && "passa de 8 MB",
+	].filter(Boolean);
+	if (problems.length) fail(`${label} ${problems.join(", ")}`);
+	return check as { width: number; height: number; bytes: number };
+}
+
+/**
+ * Puts ready images (the card's attachment, a file, a URL) into a post, instead of generating
+ * them: each one becomes final/NN.jpg, center-cropped to the post's exact size, sRGB, under
+ * 8 MB. The post.json has the same shape `generate` + `choose` leave, so the publishing flow
+ * (caption, host, question, publish) does not know the difference.
+ */
+async function importImages(
+	project: string,
+	requestFile: string,
+	options: { force?: boolean },
+) {
+	const ctx = projectContext(project);
+	const request = readJson<Request>(requestFile);
+	const count = validateRequest(request, ctx.assets);
+	const images = request.images ?? [];
+	if (
+		images.length !== count ||
+		images.some((image) => !image.source?.trim())
+	) {
+		fail(
+			`o pedido precisa de ${count} imagem(ns) com \`source\` (caminho ou URL)`,
+		);
+	}
+	const aspect: Aspect =
+		request.format === "story" ? "story" : (request.aspect ?? "feed");
+	const dimensions = ASPECTS[aspect];
+	const date = request.date ?? today();
+	const slug = request.slug ? slugify(request.slug) : slugify(request.idea);
+	const postsDir = join(ctx.dir, "posts");
+	const others = postsOfDay(postsDir, date, slug);
+	if (others.length >= MAX_POSTS_PER_DAY) {
+		fail(
+			`o projeto ${project} já tem ${others.length} posts em ${date} (${others.join(", ")}); o limite é ${MAX_POSTS_PER_DAY} por dia`,
+		);
+	}
+	const dir = join(postsDir, `${date}-${slug}`);
+	if (existsSync(dir) && !options.force)
+		fail(`${relative(process.cwd(), dir)} já existe; use --force para refazer`);
+	rmSync(dir, { recursive: true, force: true });
+	const rawDir = join(dir, ".raw");
+	mkdirSync(rawDir, { recursive: true });
+	mkdirSync(join(dir, "final"), { recursive: true });
+
+	const imported = [];
+	for (const [index, image] of images.entries()) {
+		const n = String(index + 1).padStart(2, "0");
+		const source = image.source?.trim() ?? "";
+		const local = await fetchSource(source, rawDir, n);
+		const original = pixels("verify", local) as {
+			width: number;
+			height: number;
+		};
+		const file = `final/${n}.jpg`;
+		const { quality } = pixels(
+			"finalize",
+			local,
+			join(dir, file),
+			String(dimensions.width),
+			String(dimensions.height),
+		);
+		const check = verifyFinal(join(dir, file), dimensions, file);
+		// Cover-cropping a picture of another shape cuts its edges; say so, so the agent looks.
+		const ratio = original.width / original.height;
+		const target = dimensions.width / dimensions.height;
+		const cropped = Math.abs(ratio - target) / target > 0.02;
+		imported.push({
+			n,
+			source,
+			sourceHash: hash(local),
+			sourceSize: { width: original.width, height: original.height },
+			file,
+			bytes: check.bytes,
+			jpegQuality: quality,
+			cropped,
+		});
+		console.log(
+			`✓ ${file} ← ${source} (${original.width}x${original.height}${cropped ? `, recortada no centro para ${dimensions.width}x${dimensions.height}` : ""})`,
+		);
+	}
+	rmSync(rawDir, { recursive: true, force: true });
+
+	const post = {
+		project,
+		slug,
+		date,
+		idea: request.idea,
+		pillar: request.pillar,
+		format: request.format,
+		count,
+		aspect,
+		dimensions: { width: dimensions.width, height: dimensions.height },
+		origin: "import",
+		images: imported,
+		importedAt: new Date().toISOString(),
+		review: {
+			chosen: imported.map((image) => ({
+				n: image.n,
+				file: image.file,
+				bytes: image.bytes,
+				source: image.source,
+			})),
+			reason: "imagem fornecida, não gerada",
+			rejected: [],
+			reviewedAt: new Date().toISOString(),
+		},
+	};
+	writeJson(join(dir, "post.json"), post);
+	const anyCropped = imported.some((image) => image.cropped);
+	console.log(
+		`\nPost salvo em ${relative(process.cwd(), dir)}.${anyCropped ? " Abra as imagens recortadas em final/ e confira se nada importante saiu do quadro." : ""}`,
+	);
+}
+
 // ---------------------------------------------------------------------------- review / choose
 
 function readPost(project: string, postDir: string) {
@@ -584,6 +765,10 @@ function readPost(project: string, postDir: string) {
 
 function review(project: string, postDir: string) {
 	const { ctx, dir, post } = readPost(project, postDir);
+	if (post.origin === "import")
+		fail(
+			"post importado: as imagens já estão em final/, não há variações a revisar",
+		);
 	const items = post.images.flatMap((image) =>
 		image.variations.map(
 			(variation) =>
@@ -619,6 +804,10 @@ function choose(
 	options: { pick?: string; reason?: string; reject?: string[] },
 ) {
 	const { dir, post } = readPost(project, postDir);
+	if (post.origin === "import")
+		fail(
+			"post importado: as imagens já estão em final/, não há variações a escolher",
+		);
 	if (!options.pick) fail('falta --pick (ex.: "v2" ou "01=v2,02=v2,03=v1")');
 	if (!options.reason?.trim()) fail("falta --reason");
 
@@ -651,16 +840,7 @@ function choose(
 			);
 		const target = join(dir, "final", `${image.n}.jpg`);
 		copyFileSync(join(dir, variation.file), target);
-		const check = pixels("verify", target);
-		const problems = [
-			check.format !== "JPEG" && "não é JPEG",
-			(check.width !== post.dimensions.width ||
-				check.height !== post.dimensions.height) &&
-				`tem ${check.width}x${check.height}`,
-			!/srgb/i.test(check.icc ?? "") && `perfil ${check.icc ?? "ausente"}`,
-			check.bytes >= 8 * 1024 * 1024 && "passa de 8 MB",
-		].filter(Boolean);
-		if (problems.length) fail(`final/${image.n}.jpg ${problems.join(", ")}`);
+		const check = verifyFinal(target, post.dimensions, `final/${image.n}.jpg`);
 		return {
 			n: image.n,
 			variation: variation.id,
@@ -701,7 +881,7 @@ const { positionals, values } = parseArgs({
 const [action, project, target] = positionals;
 if (!action || !project || !target)
 	fail(
-		"uso: images.ts <brief|generate|review|choose> <project> <request.json|post-dir> [opções]",
+		"uso: images.ts <brief|generate|import|review|choose> <project> <request.json|post-dir> [opções]",
 	);
 switch (action) {
 	case "brief":
@@ -709,6 +889,9 @@ switch (action) {
 		break;
 	case "generate":
 		await generate(project, resolve(target), values);
+		break;
+	case "import":
+		await importImages(project, resolve(target), values);
 		break;
 	case "review":
 		review(project, target);
